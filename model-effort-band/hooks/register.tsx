@@ -5,7 +5,7 @@ function repaint($: EngineInterface): void {
   try { $.ui.invalidate('ui.render') } catch { /* Drawing must not interrupt a request. */ }
 }
 
-// Known model labels are ASCII; Korean descriptions take two terminal cells each.
+// Known model labels are ASCII; any other character (e.g. in a raw model id) is reserved two terminal cells.
 function cells(text: string): number {
   return Array.from(text).reduce((total, char) => total + (/[^\u0000-\u007f\u25b0\u25b1]/u.test(char) ? 2 : 1), 0)
 }
@@ -60,7 +60,7 @@ export const register: Register = on => {
       const inner = columns - 4 // two borders and one padding cell at each edge
       const full = view.layout === 'full'
       const detail = full
-        ? `${effort.meter ? effort.meter + ' ' : ''}${effort.value}${effort.description ? ' · ' + effort.description : ''}`
+        ? `${effort.meter ? effort.meter + ' ' : ''}${effort.value}`
         : effort.value
       const badgeWidth = full ? model.badge.length + 2 : 0
       const effortWidth = Math.min(cells('effort ' + detail), Math.floor((inner - 3 - badgeWidth) * 0.7))

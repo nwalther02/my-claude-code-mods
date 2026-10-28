@@ -27,10 +27,10 @@ test('registers pin and renders clickable todos on terminal and desktop', async 
   on('command.register', (_$, e) => { commands.push(e.name); return { value: { command: e.name } } })
   await $.session.start(START)
   expect(commands).toContain('pin')
-  expect((await $.command.run({ command: 'pin', args: '[ ] 배포 확인' } as never)).text).toContain('고정')
+  expect((await $.command.run({ command: 'pin', args: '[ ] confirm deploy' } as never)).text).toContain('Pinned')
   for (const surface of ['terminal', 'desktop'] as const) {
     const ui = await $.ui.mount({ plugin: 'pin-memo', surface, component: 'AbovePrompt', props: BAND })
-    expect((await ui.find({ key: 'pin-title' }))?.text).toContain('핀 1')
+    expect((await ui.find({ key: 'pin-title' }))?.text).toContain('Pins 1')
     expect((await ui.find({ key: 'pin-check-1' }))?.text).toBe('[ ]')
     await ui.press({ key: 'pin-check-1' })
     expect((await $.command.run({ command: 'pin', args: 'list' } as never)).text).toContain('[x]')
@@ -73,10 +73,10 @@ test('failed write keeps previous checkbox and returns error; invalidation failu
   await $.session.start(START)
   await $.command.run({ command: 'pin', args: '[ ] safe' } as never)
   fail = true
-  expect((await $.command.run({ command: 'pin', args: 'check 1' } as never)).text).toContain('저장하지 못')
+  expect((await $.command.run({ command: 'pin', args: 'check 1' } as never)).text).toContain('Could not save')
   expect((await $.command.run({ command: 'pin', args: 'list' } as never)).text).toContain('[ ]')
   fail = false
-  expect((await $.command.run({ command: 'pin', args: 'check 1' } as never)).text).toContain('변경')
+  expect((await $.command.run({ command: 'pin', args: 'check 1' } as never)).text).toContain('Updated')
 })
 
 test('unavailable identity never leaks old notes and recovers on next command', async ($, on) => {
@@ -85,7 +85,7 @@ test('unavailable identity never leaks old notes and recovers on next command', 
   await $.session.start(START)
   await $.command.run({ command: 'pin', args: 'secret' } as never)
   fail = true
-  expect((await $.command.run({ command: 'pin', args: 'new' } as never)).text).toContain('확인')
+  expect((await $.command.run({ command: 'pin', args: 'new' } as never)).text).toContain('session folder and ID')
   const ui = await $.ui.mount({ plugin: 'pin-memo', surface: 'terminal', component: 'AbovePrompt', props: BAND })
   expect(await ui.find({ text: /secret/ })).toBeUndefined()
   fail = false
@@ -96,7 +96,7 @@ test('rapid concurrent pin commands all persist instead of cancelling each other
   environment(on)
   await $.session.start(START)
   const results = await Promise.all(['first', 'second', 'third'].map(args => $.command.run({ command: 'pin', args } as never)))
-  for (const result of results) expect(result.text).toContain('고정')
+  for (const result of results) expect(result.text).toContain('Pinned')
   const list = (await $.command.run({ command: 'pin', args: 'list' } as never)).text
   expect(list).toContain('first')
   expect(list).toContain('second')
@@ -114,7 +114,7 @@ test('an old checkbox drawing cannot change a different current session', async 
   id = 'new'
   // No redraw occurs before the press: this is the previous identity's handle.
   await ui.press({ key: 'pin-check-1' })
-  expect(toasts.join('\n')).toContain('세션')
+  expect(toasts.join('\n')).toContain('session')
   expect((await $.command.run({ command: 'pin', args: 'list' } as never)).text).not.toContain('old todo')
   id = 'old'
   expect((await $.command.run({ command: 'pin', args: 'list' } as never)).text).toContain('[ ]')
@@ -131,8 +131,8 @@ test('a damaged saved document is shown as an error and cleared only explicitly'
   on('ui.render', { component: 'AbovePrompt' }, async ($, e) => $.ui.resolve(e).Box({}))
   await $.session.start(START)
   const ui = await $.ui.mount({ plugin: 'pin-memo', surface: 'terminal', component: 'AbovePrompt', props: BAND })
-  expect((await ui.find({ key: 'pin-error' }))?.text).toContain('불러오지 못')
-  expect((await $.command.run({ command: 'pin', args: 'accidental overwrite' } as never)).text).toContain('불러오지 못')
+  expect((await ui.find({ key: 'pin-error' }))?.text).toContain('Could not load')
+  expect((await $.command.run({ command: 'pin', args: 'accidental overwrite' } as never)).text).toContain('Could not load')
   expect(value).toEqual({ version: 2 })
   await $.command.run({ command: 'pin', args: 'clear' } as never)
   expect(value).toEqual({ version: 1, nextId: 1, items: [] })
@@ -157,7 +157,7 @@ test('a newer failed identity query invalidates an older delayed successful quer
   const older = $.command.run({ command: 'pin', args: 'list' } as never)
   await started
   mode = 'fail'
-  expect((await $.command.run({ command: 'pin', args: 'list' } as never)).text).toContain('확인')
+  expect((await $.command.run({ command: 'pin', args: 'list' } as never)).text).toContain('session folder and ID')
   finish('s')
   expect((await older).text).not.toContain('private old note')
   const ui = await $.ui.mount({ plugin: 'pin-memo', surface: 'terminal', component: 'AbovePrompt', props: BAND })

@@ -1,13 +1,13 @@
-# Agent Time Machine — 설계 스펙
+# Agent Time Machine — Design Spec
 
-- 상태: 승인됨 (2026-10-10)
-- 대상: Claude Code mods API (타입 선언 2.1.292, 기본 활성화 2.1.287+)
-- 위치: `time-machine/` (이 저장소 = 마켓플레이스, agent-profiler·context-inspector와 나란히)
+- Status: Approved (2026-10-10)
+- Target: Claude Code mods API (type declarations 2.1.292, enabled by default in 2.1.287+)
+- Location: `time-machine/` (this repository = the marketplace, alongside agent-profiler and context-inspector)
 
-## 1. 목적
+## 1. Purpose
 
-코딩 에이전트가 여러 파일을 바꾸다 엉뚱한 결과를 냈을 때, Git diff는 "무엇이 바뀌었나"만 말한다.
-Time Machine은 "어떤 순서로, 어떤 도구 호출이, 어떤 파일 상태에서, 어떤 결과를 냈나"를 기록하고 되돌아가 보게 한다.
+When a coding agent changes several files and ends up with an unexpected result, a Git diff only says "what changed".
+Time Machine records "in what order, which tool calls, from which file state, produced which result" and lets you go back and look.
 
 ```
 Session #184
@@ -19,87 +19,87 @@ Session #184
 └── ⑥ Bash pytest             └── 12 passed   (fixed by ⑤)
 ```
 
-핵심: 임의 시점(step)으로 이동했을 때 **그 당시 파일시스템 상태**와 **도구 호출 내역**을 볼 수 있다.
-확장(v1 포함): 시점 복구, 분기 생성, 두 실행 경로 비교, 파일 수정 ↔ 테스트 실패 인과 추적, 동일 입력 재실행 비교.
+Core: when you move to an arbitrary point (step), you can see **the filesystem state at that time** and **the tool call history**.
+Extensions (included in v1): restoring a point in time, creating branches, comparing two execution paths, tracing the causality between file edits and test failures, and comparing re-runs with the same input.
 
-### 비목표와 정직한 경계
+### Non-goals and honest boundaries
 
-- **파일 상태 복구 ≠ LLM 실행의 결정적 재현.** v1은 파일을 되돌리고 도구를 다시 실행할 뿐, 모델 응답·외부 서비스(WebFetch, MCP)·시간·난수는 재현하지 않는다.
-  모델 턴은 기록(요약·해시)만 한다. 재현에 필요한 기록·모킹 계층은 §9에 설계만 남긴다.
-- `.gitignore`된 파일(빌드 산출물, `node_modules`, `.env` 등)은 스냅샷·복구 대상이 아니다.
-- 대화 자체를 포크하지 않는다(`/tm branch`는 파일 상태와 타임라인만 분기한다).
-- Claude Code 내장 `/rewind`(Edit/Write 도구의 파일 체크포인트)를 대체하지 않는다. Time Machine은 Bash가 바꾼 파일까지 잡고, 타임라인·인과·비교를 더한다.
+- **Restoring file state ≠ deterministic reproduction of an LLM run.** v1 only rolls files back and runs tools again; it does not reproduce model responses, external services (WebFetch, MCP), time, or random numbers.
+  Model turns are only recorded (summary and hash). The recording and mocking layer needed for reproduction is left as a design only, in §9.
+- Files that are `.gitignore`d (build artifacts, `node_modules`, `.env`, etc.) are not subject to snapshot or restore.
+- The conversation itself is not forked (`/tm branch` branches only the file state and the timeline).
+- It does not replace Claude Code's built-in `/rewind` (file checkpoints for the Edit/Write tools). Time Machine also catches files changed by Bash, and adds timeline, causality, and comparison.
 
-## 2. 관찰 가능성 등급
+## 2. Observability grades
 
-| 등급 | 예 |
+| Grade | Examples |
 |---|---|
-| exact | 스냅샷 시점의 추적 파일 내용(섀도 git 커밋), 도구 입력, 도구 결과 텍스트(앞부분)와 해시, 테스트 명령의 종료 상태 |
-| parsed | 테스트 출력에서 읽은 통과/실패 수, 실패 테스트 이름, 실패 위치 file:line (파서가 아는 형식만) |
-| inferred | 인과 용의자 순위, "fixed by", 경로 비교의 분기점 |
-| not reproduced | 모델 응답, 외부 서비스, 시간, 난수 |
+| exact | Tracked file contents at the snapshot point (shadow git commit), tool input, tool result text (the beginning) and hash, exit status of test commands |
+| parsed | Pass/fail counts read from test output, failing test names, failure location file:line (only in formats the parser knows) |
+| inferred | Causal suspect ranking, "fixed by", the divergence point of a path comparison |
+| not reproduced | Model responses, external services, time, random numbers |
 
-## 3. 프로브로 확인한 사실 (2.1.292 바이너리, 2026-10-10)
+## 3. Facts confirmed by probe (2.1.292 binary, 2026-10-10)
 
-- `$.process.run(['git', '--git-dir=<shadow>', '--work-tree=<cwd>', …])`가 mod에서 동작한다. `add -A` + `commit`이 작은 저장소에서 약 20 ms씩, 한 스냅샷 ≈ 40 ms.
-- Bash가 지운 파일(삭제)과 새 파일이 다음 스냅샷에 잡힌다. `.gitignore`가 적용된다(`out.log` 제외). 사용자의 `.git`은 건드리지 않는다(git은 `.git` 항목을 추가하지 않는다).
-- `$.fs`에는 read(≤ 4 MiB)/write/list/exists/stat만 있고 **삭제가 없다** → 복구와 정리는 git·`$.process.run`으로 한다.
-- 테스트 러너의 `$`에는 `process`가 없다(`$.process` undefined).
-- `$.process.run`의 `env`로 `GIT_INDEX_FILE`을 세션별로 줄 수 있다. git은 저장소 훅이 꺼진 채 실행된다.
-- `$.tool.call`은 엔진과 같은 `tool.call` 이벤트(권한 확인·다이얼로그 포함)로 도구를 다시 부른다.
-- `$.session.append({ message: { type: 'user', content: [text] } })`로 모델이 읽는 노트를 대화에 넣을 수 있다.
+- `$.process.run(['git', '--git-dir=<shadow>', '--work-tree=<cwd>', …])` works in a mod. `add -A` + `commit` take about 20 ms each in a small repository, so one snapshot ≈ 40 ms.
+- Files deleted by Bash (deletions) and new files are caught in the next snapshot. `.gitignore` is applied (`out.log` is excluded). The user's `.git` is not touched (git does not add a `.git` entry).
+- `$.fs` has only read (≤ 4 MiB)/write/list/exists/stat and **no delete** → restore and cleanup are done through git and `$.process.run`.
+- The test runner's `$` has no `process` (`$.process` is undefined).
+- `GIT_INDEX_FILE` can be given per session through the `env` of `$.process.run`. git runs with repository hooks turned off.
+- `$.tool.call` calls the tool again through the same `tool.call` event as the engine (including permission checks and dialogs).
+- `$.session.append({ message: { type: 'user', content: [text] } })` can put a note that the model reads into the conversation.
 
-## 4. 아키텍처
+## 4. Architecture
 
-순수 코어 + 얇은 어댑터 + git 래퍼.
+Pure core + thin adapter + git wrapper.
 
 ```
 time-machine/
   .claude-plugin/plugin.json   # userConfig: storeDir, retentionDays, recordModelOutput, skipSearchBash
   hooks/hooks.json
-  hooks/register.tsx           # 어댑터: 이벤트 → Recorder, 명령, 패널, 노트
+  hooks/register.tsx           # adapter: events → Recorder, commands, pane, notes
   hooks/core/
     types.ts                   # Step, Snapshot, TestRun, Branch, SessionMeta
-    timeline.ts                # Recorder 상태 기계(steps, branches, turns), 직렬화/역직렬화
-    tools.ts                   # 도구 분류(mutating/read-only), 입력 요약·대상 추출, 결과 요약
-    classify.ts                # Bash 명령 분류 (agent-profiler에서 복사)
-    testparse.ts               # 테스트 출력 파서: pytest, jest/vitest, go, cargo, node:test, generic
-    causality.ts               # 실패 실행의 용의자, fixed-by
-    compare.ts                 # 두 경로의 LCS 정렬, 분기점, 요약
-    render.ts                  # 타임라인 트리, step 상세, why, compare, rerun 비교, 상태줄
-    store.ts                   # JSONL 청크 경로·분할 규칙(순수)
-    redact.ts                  # agent-profiler의 비밀값 마스킹 (복사)
-  hooks/git.ts                 # 섀도 git 래퍼: init, snapshot, treeOf, diff, restore, checkoutTo, prune (직렬 큐)
+    timeline.ts                # Recorder state machine (steps, branches, turns), serialization/deserialization
+    tools.ts                   # tool classification (mutating/read-only), input summary and target extraction, result summary
+    classify.ts                # Bash command classification (copied from agent-profiler)
+    testparse.ts               # test output parsers: pytest, jest/vitest, go, cargo, node:test, generic
+    causality.ts               # suspects of a failed run, fixed-by
+    compare.ts                 # LCS alignment of two paths, divergence point, summary
+    render.ts                  # timeline tree, step detail, why, compare, rerun comparison, status line
+    store.ts                   # JSONL chunk paths and splitting rules (pure)
+    redact.ts                  # secret masking from agent-profiler (copied)
+  hooks/git.ts                 # shadow git wrapper: init, snapshot, treeOf, diff, restore, checkoutTo, prune (serial queue)
   tests/*.test.ts
   README.md
 ```
 
-### 4.1 저장소 배치
+### 4.1 Store layout
 
-- 루트: userConfig `storeDir`(기본 `~/.claude/time-machine`)/`<projectKey>`/. `projectKey` = 세션 루트 절대 경로의 basename + `-` + fnv1a64(경로) 앞 8자.
-- `shadow.git/`: bare 저장소. 세션별 인덱스 `index/<sessionId>`(`GIT_INDEX_FILE`), 세션별 ref `refs/tm/<sessionId>/<branch>`.
-  커밋 작성자 `time-machine <tm@local>`, 메시지 = `step <n> <tool> <sessionId>`.
+- Root: userConfig `storeDir` (default `~/.claude/time-machine`)/`<projectKey>`/. `projectKey` = the basename of the absolute session root path + `-` + the first 8 characters of fnv1a64(path).
+- `shadow.git/`: a bare repository. Per-session index `index/<sessionId>` (`GIT_INDEX_FILE`), per-session ref `refs/tm/<sessionId>/<branch>`.
+  Commit author `time-machine <tm@local>`, message = `step <n> <tool> <sessionId>`.
 - `sessions/<sessionId>/meta.json`: `{ sessionId, root, startedAt, model?, branches }`.
-- `sessions/<sessionId>/<loadId>-<chunk>.jsonl`: 타임라인 레코드(§4.3). 청크는 1 MiB를 넘으면 다음 번호로. 현재 청크는 레코드 추가 때마다 통째로 다시 쓴다(`$.fs.write`에 append가 없다).
+- `sessions/<sessionId>/<loadId>-<chunk>.jsonl`: timeline records (§4.3). When a chunk exceeds 1 MiB, the next number is used. The current chunk is rewritten in full each time a record is added (`$.fs.write` has no append).
 
-### 4.2 스냅샷
+### 4.2 Snapshots
 
-- **베이스라인**: 세션 시작(또는 로드) 시 1회 `snapshot(label='baseline')`.
-- **변경성 도구 후**: Edit, MultiEdit, Write, NotebookEdit, Bash, 그리고 알 수 없는 도구·MCP 도구(보수적으로) 뒤에 `snapshot`.
-  읽기 전용 도구(Read, Grep, Glob, LS, WebFetch, WebSearch, TodoWrite, Task/Agent 자체 등)는 스냅샷 없음.
-  userConfig `snapshotReadOnlyBash`(기본 false): false면 classify가 `search`인 Bash는 건너뛴다.
-- **외부 변경 감지**: 변경성 도구 *전*에 `treeOf()`(add -A + write-tree)로 현재 트리를 구해 직전 스냅샷 트리와 다르면, 그 차이를 커밋하고 `external` step으로 기록한다(사람이 IDE에서 고친 것을 에이전트 탓으로 돌리지 않기 위해).
-- `snapshot`: `add -A` → `write-tree` → 트리가 직전과 같으면 커밋하지 않고 직전 커밋을 그대로 가리킨다(`changed: false`). 다르면 `commit-tree -p <prev>` + ref 갱신.
-  `diff --name-status <prev> <new>`로 바뀐 파일 목록(`A/M/D/R`)을 step에 붙인다(최대 200개, 넘치면 개수만).
-- **직렬 큐**: 모든 git 호출은 한 Promise 큐로 직렬화(병렬 도구 호출·인덱스 잠금). 다른 변경성 도구가 진행 중일 때 찍힌 스냅샷은 `concurrent: true`.
-- **시간 예산**: 각 git 호출 timeoutMs 30 s. 스냅샷 시간(ms)을 step에 기록하고 보고서에 평균·최대를 보인다.
-- **git 없음/실패**: 첫 git 호출이 실패하면 세션 동안 `snapshots: off`로 전환, 타임라인만 기록하고 상태줄·보고서에 이유를 보인다.
+- **Baseline**: one `snapshot(label='baseline')` at session start (or load).
+- **After mutating tools**: `snapshot` after Edit, MultiEdit, Write, NotebookEdit, Bash, and (conservatively) unknown tools and MCP tools.
+  Read-only tools (Read, Grep, Glob, LS, WebFetch, WebSearch, TodoWrite, Task/Agent itself, etc.) get no snapshot.
+  userConfig `snapshotReadOnlyBash` (default false): when false, Bash that classify marks as `search` is skipped.
+- **External change detection**: *before* a mutating tool, get the current tree with `treeOf()` (add -A + write-tree); if it differs from the previous snapshot's tree, commit that difference and record it as an `external` step (so that something a person fixed in the IDE is not blamed on the agent).
+- `snapshot`: `add -A` → `write-tree` → if the tree is the same as the previous one, do not commit and point at the previous commit as is (`changed: false`). If it differs, `commit-tree -p <prev>` + update the ref.
+  Attach the changed file list (`A/M/D/R`) from `diff --name-status <prev> <new>` to the step (up to 200; if more, only the count).
+- **Serial queue**: all git calls are serialized through one Promise queue (parallel tool calls, index locking). A snapshot taken while another mutating tool is in progress gets `concurrent: true`.
+- **Time budget**: timeoutMs 30 s for each git call. The snapshot time (ms) is recorded on the step, and the report shows the average and maximum.
+- **No git / failure**: if the first git call fails, switch to `snapshots: off` for the rest of the session, record only the timeline, and show the reason in the status line and the report.
 
-### 4.3 타임라인 레코드 (JSONL)
+### 4.3 Timeline records (JSONL)
 
 ```
 {type:'session', sessionId, root, startedAt, loadId}
-{type:'turn', n, at, prompt:{chars, hash, head?}}                              // head: 앞 200자, recordModelOutput일 때만
+{type:'turn', n, at, prompt:{chars, hash, head?}}                              // head: first 200 chars, only when recordModelOutput is on
 {type:'step', n, id, turn, agentId?, branch, parent, tool, kind:'tool'|'external'|'restore'|'baseline',
   input, target?, startedAt, endedAt, result:{isError, denied, chars, hash, head}, 
   snapshot?:{commit, changed, files:[{status,path}], ms, concurrent?}, test?:TestRun, rerunOf?}
@@ -107,131 +107,131 @@ time-machine/
 {type:'branch', name, fromStep, at}
 ```
 
-- `input`: 도구 입력. 문자열 필드는 4 KiB에서 자르고 `…(+N chars, hash)`; Write의 `content`, Edit의 `old/new_string`은 앞 4 KiB만(전체는 스냅샷에 있다).
-  Bash `command`와 문자열 입력 전체에 redact를 적용한다.
-- `result.head`: 결과 텍스트 앞 2 KiB(redact 적용). 전체는 저장하지 않는다(재실행 비교는 해시 + head).
-- step 번호 `n`은 세션 안에서 1부터 단조 증가(분기와 무관). 표시는 ①②… (20 넘으면 숫자).
-- `parent`: 같은 branch의 직전 step n(첫 step은 분기 지점 또는 0). `branch`: 기본 `main`.
+- `input`: tool input. String fields are cut at 4 KiB and end with `…(+N chars, hash)`; for Write's `content` and Edit's `old/new_string`, only the first 4 KiB are kept (the full text is in the snapshot).
+  Redaction is applied to the Bash `command` and to all string inputs.
+- `result.head`: the first 2 KiB of the result text (redaction applied). The full text is not stored (re-run comparison uses hash + head).
+- The step number `n` increases monotonically from 1 within a session (regardless of branches). It is displayed as ①②… (as a number past 20).
+- `parent`: the previous step n on the same branch (for the first step, the branch point or 0). `branch`: `main` by default.
 
-### 4.4 테스트 실행과 인과
+### 4.4 Test runs and causality
 
-- Bash step의 `command`를 classify → `test`면 `testparse(output, exitCode?)`로 `TestRun { framework, passed?, failed?, errors?, skipped?, failures:[{name, file?, line?}], ok }`.
-  - pytest: `=+ (\d+ failed)?, ?(\d+ passed)? … in` 요약줄, `FAILED path::name`, 트레이스백의 `path:line:`.
+- Classify the `command` of a Bash step → if it is `test`, build `TestRun { framework, passed?, failed?, errors?, skipped?, failures:[{name, file?, line?}], ok }` with `testparse(output, exitCode?)`.
+  - pytest: the `=+ (\d+ failed)?, ?(\d+ passed)? … in` summary line, `FAILED path::name`, `path:line:` in the traceback.
   - jest/vitest: `Tests: +(\d+) failed, (\d+) passed`, `● Suite › name`, `FAIL path`, `at … (path:line:col)`.
   - go: `--- FAIL: Name`, `FAIL\tpkg`, `ok\tpkg`, `file_test.go:line:`.
   - cargo: `test result: (ok|FAILED). (\d+) passed; (\d+) failed`, `---- name stdout ----`, `src/x.rs:line:col`.
   - node:test: `# pass N`, `# fail N`, `not ok N - name`.
-  - generic: 결과가 오류(`isError`)면 실패, 아니면 통과로 보되 counts 없음(`framework:'unknown'`).
-- **용의자(why)**: 실패한 테스트 실행 F에 대해, 기준 B = 같은 branch에서 F 이전의 마지막 *통과* 테스트 실행(없으면 베이스라인).
-  B 스냅샷 → F 스냅샷 사이에 바뀐 파일 각각에 점수: 실패 출력에 그 경로(또는 basename)가 등장 +100, file:line이 등장 +50, 마지막으로 바뀐 step이 F에 가까울수록 +(0..20), 바뀐 줄 수 log2 +(0..10).
-  상위 5개를 근거와 함께 보인다. 그 파일을 바꾼 step 번호도 함께.
-- **fixed by**: F 다음의 첫 통과 실행 P가 있으면, F→P 사이 바뀐 파일과 그 step들을 "fixed by"로 보인다.
-- 실패 수 증감(예: 3 failed → 1 failed)은 "improved"로 표시.
+  - generic: if the result is an error (`isError`) it counts as a failure, otherwise as a pass, with no counts (`framework:'unknown'`).
+- **Suspects (why)**: for a failed test run F, the baseline B = the last *passing* test run before F on the same branch (the baseline snapshot if there is none).
+  Each file changed between the B snapshot and the F snapshot gets a score: its path (or basename) appears in the failure output +100, file:line appears +50, the closer the step that last changed it is to F +(0..20), log2 of the number of changed lines +(0..10).
+  The top 5 are shown with their evidence, together with the step numbers that changed those files.
+- **fixed by**: if there is a first passing run P after F, the files changed between F→P and their steps are shown as "fixed by".
+- A change in the failure count (for example 3 failed → 1 failed) is marked "improved".
 
-### 4.5 복구와 분기
+### 4.5 Restore and branch
 
-- `/tm restore <n> [--yes]`: 대상 = step n의 스냅샷(스냅샷이 없는 step이면 그 이전 가장 가까운 스냅샷).
-  1) `--yes` 없으면 dry run: 바뀔 파일 목록(`A/M/D`)과 개수만 보이고 끝.
-  2) 있으면: 현재 상태를 `restore-from` 스냅샷으로 먼저 커밋(복구 자체를 되돌릴 수 있게) → `read-tree -u --reset <target>`(세션 인덱스로; 추적 파일을 대상에 맞추고 대상에 없는 추적 파일은 지운다, 무시 파일은 그대로) → `kind:'restore'` step 기록(스냅샷 = 대상 커밋) → 대화에 노트 append:
+- `/tm restore <n> [--yes]`: target = the snapshot of step n (if step n has no snapshot, the nearest snapshot before it).
+  1) Without `--yes`, dry run: show only the list of files that would change (`A/M/D`) and the count, then stop.
+  2) With it: first commit the current state as a `restore-from` snapshot (so that the restore itself can be undone) → `read-tree -u --reset <target>` (with the session index; tracked files are matched to the target and tracked files not in the target are deleted, ignored files are left as they are) → record a `kind:'restore'` step (snapshot = the target commit) → append a note to the conversation:
      `[time-machine] The user restored the working tree to step <n> (<tool> <target>). Files changed: …. Earlier tool results about these files are out of date; re-read before editing.`
-  3) 턴이 진행 중이면 거부(`busy`)하고 이유를 보인다(명령은 턴 사이에 실행된다).
-- `/tm branch <n> [name] [--yes]`: restore와 같되 이후 step들은 새 branch(`name`, 기본 `b<k>`)에 기록, `branch` 레코드 추가, ref `refs/tm/<sid>/<name>`.
-  대화는 포크되지 않는다는 점을 출력과 노트에 적는다.
-  분기 복구 step의 트리는 step n의 트리와 같으므로 `snapshot.files = []`, `filesTotal = 0`이고(그래야 `/tm why`가 떠난 branch에서만 바뀐 파일을 용의자로 보지 않는다), 작업 트리 변경 목록은 표시용으로 입력의 `workTree: [{status, path}…]`(최대 200)에 둔다. 같은 branch의 복구는 바뀐 파일을 그대로 `snapshot.files`에 둔다.
-- 복구는 사용자 명령으로만 실행된다(모델이 부를 수 있는 도구로 노출하지 않는다).
-- 무시 파일은 스냅샷되지 않으므로, 대상 트리가 무시되고 추적되지 않는 경로를 덮어쓰거나 지울 때(같은 경로, 또는 한쪽이 다른 쪽의 디렉터리 접두: `out/` ↔ `out`, `d` ↔ `d/f`) 복구는 아무것도 건드리지 않고 거부한다: `restore would overwrite ignored files that no snapshot holds: <최대 10개>; move them aside and run the restore again`. 강제로 add하지 않는다(무시된 비밀값이 섀도 저장소로 복사되므로). 검사는 `ls-files -z --others --ignored --exclude-standard --directory`와 `ls-tree -r -z --name-only <target>`로, 직렬 큐 안에서 commit-tree 전에 한다.
+  3) If a turn is in progress, refuse (`busy`) and show the reason (commands run between turns).
+- `/tm branch <n> [name] [--yes]`: same as restore, but the later steps are recorded on a new branch (`name`, default `b<k>`), a `branch` record is added, and the ref is `refs/tm/<sid>/<name>`.
+  The fact that the conversation is not forked is stated in the output and the note.
+  The tree of a branch restore step is the same as the tree of step n, so `snapshot.files = []` and `filesTotal = 0` (so that `/tm why` does not treat files changed only on the branch that was left as suspects), and the list of working tree changes is kept for display in the input's `workTree: [{status, path}…]` (up to 200). A restore on the same branch keeps the changed files in `snapshot.files` as they are.
+- Restore is run only by a user command (it is not exposed as a tool the model can call).
+- Ignored files are not snapshotted, so when the target tree would overwrite or delete a path that is ignored and untracked (the same path, or one being a directory prefix of the other: `out/` ↔ `out`, `d` ↔ `d/f`), the restore refuses without touching anything: `restore would overwrite ignored files that no snapshot holds: <up to 10>; move them aside and run the restore again`. It does not force an add (because ignored secrets would be copied into the shadow repository). The check uses `ls-files -z --others --ignored --exclude-standard --directory` and `ls-tree -r -z --name-only <target>`, inside the serial queue before commit-tree.
 
-### 4.6 비교
+### 4.6 Compare
 
-- `/tm compare <a> <b>`: a, b는 branch 이름 또는 `session:<id>[/<branch>]`(같은 프로젝트의 다른 세션 기록).
-- 각 경로 = 그 branch를 따라간 step 목록(분기 이전 공통 부분 포함). 키 = `tool + ' ' + 대상`(대상 없으면 tool).
-- LCS로 정렬 → 첫 불일치 = 분기점. 출력: 공통 접두 길이, 분기점 이후 각자의 step(최대 20), 각 경로 마지막 스냅샷 간 파일 diff 통계, 각 경로 마지막 테스트 결과, 스냅샷 시간 합계.
+- `/tm compare <a> <b>`: a and b are branch names or `session:<id>[/<branch>]` (the record of another session in the same project).
+- Each path = the list of steps that follow that branch (including the common part before the branch point). Key = `tool + ' ' + target` (just tool if there is no target).
+- Align with LCS → the first mismatch = the divergence point. Output: the length of the common prefix, each path's steps after the divergence point (up to 20), file diff statistics between each path's last snapshot, each path's last test result, and the total snapshot time.
 
-### 4.7 재실행
+### 4.7 Re-run
 
 - `/tm rerun <n> [--write] [--isolated]`:
-  - 기본: `$.tool.call({ tool, ...input })`로 같은 입력 재호출(권한 확인 포함). 읽기 전용 도구만 허용; 변경성 도구는 `--write`가 있어야 하며 그 뒤 스냅샷.
-    결과 비교: 해시 같음 → "identical"; 다르면 head 기준 줄 diff 요약(+/− 줄 수, 처음 다른 줄 3개). 테스트면 TestRun 비교(passed/failed 변화).
-  - `--isolated`(Bash만): step n 직전 스냅샷을 임시 디렉터리(`<storeDir>/<projectKey>/tmp/<rand>`)에 `git archive | tar -x`(또는 `checkout-index --prefix`)로 풀고 `$.process.run(['sh','-lc',command], { cwd: tmp, timeoutMs })`로 실행 → 결과 비교 → 임시 디렉터리 삭제.
-    무시 파일(의존성 등)이 없으므로 best effort이며, 출력 머리에 그 사실을 적는다. 이 경로는 권한 다이얼로그를 거치지 않으므로 사용자 명령으로만 실행되고, 실행할 명령을 출력에 먼저 보인다.
-    `--yes` 없는 `--isolated`는 dry run이다: 명령(`$ <command>`), 쓸 스냅샷, 주의점, 실행 방법만 보이고 아무것도 실행하지 않는다(어느 origin에서든). `--yes`가 있으면(사용자 입력 origin만) 명령이 프로젝트 루트의 절대 경로를 담을 때 거부하고("the command refers to the project's absolute path, so it would not be isolated"), 아니면 실행 전후로 외부 변경을 검사해 프로젝트에 생긴 변경을 `external` step으로 남긴다.
-- 모델 응답은 재실행하지 않는다(§9).
+  - Default: call again with the same input through `$.tool.call({ tool, ...input })` (including the permission check). Only read-only tools are allowed; a mutating tool needs `--write`, followed by a snapshot.
+    Result comparison: same hash → "identical"; otherwise a line diff summary based on head (+/− line counts, the first 3 differing lines). For tests, compare the TestRun (change in passed/failed).
+  - `--isolated` (Bash only): unpack the snapshot just before step n into a temporary directory (`<storeDir>/<projectKey>/tmp/<rand>`) with `git archive | tar -x` (or `checkout-index --prefix`) and run it with `$.process.run(['sh','-lc',command], { cwd: tmp, timeoutMs })` → compare the results → delete the temporary directory.
+    Ignored files (dependencies and so on) are absent, so this is best effort, and the output header says so. This path does not go through the permission dialog, so it is run only by a user command, and the command to be run is shown in the output first.
+    `--isolated` without `--yes` is a dry run: it shows only the command (`$ <command>`), the snapshot to be used, the cautions, and how to run it, and runs nothing (from any origin). With `--yes` (user-input origin only), it refuses when the command contains the absolute path of the project root ("the command refers to the project's absolute path, so it would not be isolated"); otherwise it checks for external changes before and after the run and records any change made to the project as an `external` step.
+- Model responses are not re-run (§9).
 
-### 4.8 UI와 명령
+### 4.8 UI and commands
 
-모두 `/tm <sub>` 하나로(등록 1개, `argumentHint`).
+All under a single `/tm <sub>` (one registration, `argumentHint`).
 
-| 명령 | 내용 |
+| Command | Description |
 |---|---|
-| `/tm` 또는 `/tm timeline [--all] [--branch b]` | 타임라인 트리(최근 30 step, `--all` 전체). step마다 번호·도구·대상·결과 한 줄·스냅샷 표식·테스트 요약 |
-| `/tm show <n>` | step 상세: 입력(잘린 표시), 결과 head, 바뀐 파일, 테스트 결과, 스냅샷 커밋·시간 |
-| `/tm diff <a> [b]` | step a와 b(기본: 현재) 스냅샷 사이 `diff --stat` + 패치(최대 400줄, 넘치면 잘림 표시) |
-| `/tm why [n]` | 실패 테스트 실행 n(기본: 마지막 실패)의 용의자와 fixed-by |
+| `/tm` or `/tm timeline [--all] [--branch b]` | Timeline tree (the latest 30 steps, `--all` for all). For each step: number, tool, target, a one-line result, snapshot marker, test summary |
+| `/tm show <n>` | Step detail: input (shown truncated), result head, changed files, test result, snapshot commit and time |
+| `/tm diff <a> [b]` | `diff --stat` + patch between the snapshots of step a and b (default: current) (up to 400 lines, truncation is marked if exceeded) |
+| `/tm why [n]` | Suspects and fixed-by for failed test run n (default: the last failure) |
 | `/tm restore <n> [--yes]` | §4.5 |
 | `/tm branch <n> [name] [--yes]` | §4.5 |
 | `/tm compare <a> <b>` | §4.6 |
 | `/tm rerun <n> [--write] [--isolated]` | §4.7 |
-| `/tm sessions` | 이 프로젝트의 기록된 세션 목록(시작 시각, step 수, branch) |
-| `/tm-pane` | 실시간 타임라인 패널 |
+| `/tm sessions` | List of recorded sessions of this project (start time, step count, branches) |
+| `/tm-pane` | Live timeline pane |
 
-상태줄: `tm ⑫ · 5 snaps · 41ms` (마지막 step 번호, 스냅샷 수, 평균 스냅샷 시간). 스냅샷 꺼짐이면 `tm ⑫ · snapshots off`.
+Status line: `tm ⑫ · 5 snaps · 41ms` (last step number, snapshot count, average snapshot time). When snapshots are off: `tm ⑫ · snapshots off`.
 
-## 5. 이벤트
+## 5. Events
 
-| 이벤트 | 용도 |
+| Event | Purpose |
 |---|---|
-| `session.start` | 저장소 준비(init), 세션 메타, 이전 기록 로드(리로드면 같은 sessionId의 청크를 읽어 복원), 보존 기간 정리, 베이스라인, 명령 등록 |
-| `session.end` (reason `clear`/`resume`) | 새 세션 id로 Recorder 전환(§4.1의 새 세션 폴더), 베이스라인 |
-| `turn.start` | turn 레코드 |
-| `tool.call` | 변경성이면 외부 변경 감지 → `next(e)` → step 기록 → (변경성) 스냅샷 → 테스트 파싱. 결과는 그대로 반환 |
-| `turn.step` | stop 청크: model 레코드(usage, stopReason); 텍스트 청크 길이·해시(recordModelOutput면 본문) |
-| `command.run` / `ui.render` | 명령·패널 |
+| `session.start` | Prepare the store (init), session metadata, load earlier records (on a reload, read and restore the chunks of the same sessionId), retention cleanup, baseline, command registration |
+| `session.end` (reason `clear`/`resume`) | Switch the Recorder to the new session id (the new session folder of §4.1), baseline |
+| `turn.start` | turn record |
+| `tool.call` | If mutating, detect external changes → `next(e)` → record the step → (if mutating) snapshot → parse tests. The result is returned unchanged |
+| `turn.step` | stop chunk: model record (usage, stopReason); text chunk length and hash (the body if recordModelOutput is on) |
+| `command.run` / `ui.render` | commands and pane |
 
-## 6. 오류 처리 — 세션을 방해하지 않는다
+## 6. Error handling — never disturb the session
 
-- 모든 훅은 `next(e)`의 결과를 그대로 반환. 기록·git·파일 쓰기는 try/catch, 실패는 상태줄·보고서에 한 줄로.
-- `tool.call`은 스냅샷을 기다린 뒤 반환한다(다음 도구가 파일을 바꾸기 전에 상태를 고정하기 위해). 이 대기는 git 시간만큼 도구 완료를 늦춘다 — 보고서에 측정값을 보인다.
-- `.catch(($, e, next) => next(e))`를 tool.call, turn.step(생성기), session.end에.
-- 복구/분기/재실행은 명시적 사용자 명령 + 복구·분기는 `--yes`. 복구 전 항상 현재 상태를 스냅샷.
-- 사용자의 `.git`, 무시 파일은 절대 쓰지 않는다. 섀도 저장소는 `storeDir` 밖에 쓰지 않는다(임시 디렉터리도 그 안).
+- Every hook returns the result of `next(e)` unchanged. Recording, git, and file writes are in try/catch, and a failure is shown in one line in the status line and the report.
+- `tool.call` returns after waiting for the snapshot (to pin the state before the next tool changes files). This wait delays tool completion by the git time — the report shows the measured value.
+- `.catch(($, e, next) => next(e))` on tool.call, turn.step (generator), and session.end.
+- Restore/branch/re-run are explicit user commands, and restore and branch need `--yes`. The current state is always snapshotted before a restore.
+- The user's `.git` and ignored files are never written. The shadow repository does not write outside `storeDir` (the temporary directory is inside it too).
 
-## 7. 보존
+## 7. Retention
 
-- `session.start`에서 `retentionDays`(기본 14)보다 오래된 세션 폴더 삭제(`$.process.run(['rm','-rf',dir])`, `storeDir/<projectKey>/sessions/` 아래인지 경로 검사 후), 해당 ref 삭제, `git gc --prune=now --quiet`를 하루 한 번(`$.store`에 마지막 실행 시각).
+- At `session.start`, delete session folders older than `retentionDays` (default 14) (`$.process.run(['rm','-rf',dir])`, after checking that the path is under `storeDir/<projectKey>/sessions/`), delete the corresponding refs, and run `git gc --prune=now --quiet` once a day (the last run time is kept in `$.store`).
 
-## 8. 테스트
+## 8. Tests
 
-- 코어 단위: Recorder(번호, branch/parent, 직렬화 왕복), tools(분류·입력 요약·자르기·redact), classify, testparse(형식별 샘플 출력), causality(용의자 점수, fixed-by, improved), compare(LCS, 분기점), render(트리·상세·why·compare), store(청크 분할).
-- git 래퍼: 테스트 러너의 `$`에는 `process`가 없어(프로브 확인) 진짜 git을 단위 테스트에서 돌릴 수 없다. 그래서 `git.ts`는
-  `Runner = (args: string[], opts: { env?, cwd?, timeoutMs? }) => Promise<{ exitCode, stdout, stderr }>`를 주입받고,
-  단위 테스트는 가짜 Runner(호출을 기록하고 각본대로 답함)로 명령 순서·인자·환경(`GIT_INDEX_FILE`)·출력 파싱(name-status, write-tree 비교)·오류 경로(git 없음 → snapshots off)를 검증한다.
-  실제 동작(변경/무변경/삭제/무시 파일, restore 삭제 포함, restore-from 커밋, branch ref)은 E2E로 검증한다.
-- 어댑터: 명령 응답, tool.call 결과 무변형, dry run 출력.
-- E2E(2.1.292 `-p` stream-json, 한 프로세스): 파일 Read → Edit → 실패 테스트(Bash) → Edit → 통과 테스트 → `/tm` → `/tm why` → `/tm restore 3 --yes` → 파일 내용 확인.
+- Core units: Recorder (numbering, branch/parent, serialization round trip), tools (classification, input summary, truncation, redact), classify, testparse (sample output per format), causality (suspect scores, fixed-by, improved), compare (LCS, divergence point), render (tree, detail, why, compare), store (chunk splitting).
+- git wrapper: the test runner's `$` has no `process` (confirmed by probe), so real git cannot be run in unit tests. So `git.ts` takes an injected
+  `Runner = (args: string[], opts: { env?, cwd?, timeoutMs? }) => Promise<{ exitCode, stdout, stderr }>`,
+  and the unit tests use a fake Runner (it records the calls and answers as scripted) to check the command order, arguments, environment (`GIT_INDEX_FILE`), output parsing (name-status, write-tree comparison), and the error path (no git → snapshots off).
+  The real behavior (changed/unchanged/deleted/ignored files, including restore deletion, the restore-from commit, branch refs) is verified by E2E.
+- Adapter: command responses, tool.call result left unmodified, dry run output.
+- E2E (2.1.292 `-p` stream-json, one process): file Read → Edit → failing test (Bash) → Edit → passing test → `/tm` → `/tm why` → `/tm restore 3 --yes` → check the file contents.
 
-## 9. v2 설계 노트: 결정적 재현을 위한 기록·모킹 계층 (구현하지 않음)
+## 9. v2 design note: a recording and mocking layer for deterministic reproduction (not implemented)
 
-mods API로 가능한 구조:
-1. **모델 응답 카세트**: `turn.step` 훅이 `next` 없이 기록된 청크를 내보내면(제너레이터) 엔진은 그것을 모델 응답으로 쓴다. 키 = 요청 메시지들의 해시(`$.session.messages({as:'api'})`) + 모델 + 인덱스. v1의 `model` 레코드에 `recordModelOutput`로 본문·toolUses 입력을 남기면 이 카세트의 원료가 된다.
-2. **도구 결과 카세트**: `tool.call` 훅이 `next` 없이 `{ result }`로 답한다. 키 = (tool, 입력 해시, 직전 스냅샷 커밋). 파일 상태는 섀도 git이 재구성.
-3. **외부 서비스**: WebFetch/WebSearch/MCP는 도구 결과 카세트로 덮는다. 네트워크를 쓰는 Bash는 카세트 없이는 재현 불가로 표시.
-4. **시간·난수**: 테스트가 의존하면 재현 불가. 기록 시 `date`, 시드 등을 감지해 경고만.
-5. 재현 실행 = 새 세션 + 베이스라인 복구 + 카세트 모드. 카세트 miss 지점이 곧 "비결정적 분기점".
+A structure the mods API makes possible:
+1. **Model response cassette**: if a `turn.step` hook emits recorded chunks without `next` (a generator), the engine uses them as the model response. Key = hash of the request messages (`$.session.messages({as:'api'})`) + model + index. If v1's `model` record keeps the body and toolUses input through `recordModelOutput`, it becomes the raw material for this cassette.
+2. **Tool result cassette**: the `tool.call` hook answers with `{ result }` without `next`. Key = (tool, input hash, previous snapshot commit). The file state is reconstructed by the shadow git.
+3. **External services**: WebFetch/WebSearch/MCP are covered by the tool result cassette. Bash that uses the network is marked as not reproducible without a cassette.
+4. **Time and random numbers**: not reproducible if the test depends on them. At recording time, only warn by detecting `date`, seeds, and the like.
+5. Reproduction run = new session + baseline restore + cassette mode. The point where the cassette misses is exactly the "non-deterministic divergence point".
 
-## 10. 실행 환경
+## 10. Execution environments
 
-| 환경 | 동작 |
+| Environment | Behavior |
 |---|---|
-| 터미널 | 모든 명령, 패널, 상태줄 |
-| VS Code 채팅 패널 | 훅과 명령 텍스트만(패널·상태줄은 표시되지 않음) — `/tm` 텍스트가 기본 출력 |
-| `claude -p` | 기록·스냅샷 동작; 명령은 stream-json 입력으로 같은 프로세스에서 |
+| Terminal | All commands, the pane, the status line |
+| VS Code chat panel | Hooks and command text only (the pane and status line are not shown) — the `/tm` text is the default output |
+| `claude -p` | Recording and snapshots work; commands go in the same process through stream-json input |
 
-## 11. 계획 단계에서 정한 보정 (2026-10-10)
+## 11. Corrections decided at the planning stage (2026-10-10)
 
-1. **베이스라인은 git이 처음 필요할 때 찍는다**(첫 변경성 도구 직전, 또는 git을 쓰는 첫 `/tm` 명령). 훅의 `$`는 그 훅이 살아 있는 동안만 믿을 수 있고, 세션 시작을 git 시간만큼 늦추지 않기 위해서다. 베이스라인 = "기록된 첫 변경 직전의 상태". §4.2·§5의 "세션 시작 시 베이스라인"을 대체한다.
-2. **Bash는 기본으로 모두 스냅샷**한다. classify가 `search`로 보는 명령도 리디렉션(`cat > f <<EOF`)으로 파일을 쓸 수 있기 때문이다. 변경이 없으면 커밋하지 않으므로 비용은 트리 해시 한 번. userConfig `skipSearchBash`(기본 false)를 켜면 `search` 명령은 건너뛴다. §4.2의 `snapshotReadOnlyBash`를 대체한다.
-3. **스냅샷을 끄는 조건**: 세션 루트가 `/` 또는 HOME이면 꺼짐; 베이스라인 스냅샷이 5초를 넘으면 꺼짐(이후 모든 변경성 도구가 그만큼 느려지므로). 이유는 상태줄과 `/tm`에 보인다.
-4. `turn.step`은 생성기 훅이라 `.catch`를 달지 않고, 기록은 모두 try 안에서 한다.
-5. git 래퍼는 훅마다 그 훅의 `$`로 만든 Runner를 쓴다(`git.runner = runnerOf($)`).
-6. 재실행 입력: 이번 로드에서 기록한 step은 메모리에 둔 원래 입력으로 재실행한다. 저장된 입력은 잘리거나 마스킹됐을 수 있어(`inputLossy`) 그런 step은 다른 로드에서 재실행하지 않는다.
-7. **저장소 위치**: `storeDir`(`~` 확장 후)가 절대 경로가 아니면 스냅샷 꺼짐("storeDir must be an absolute path"). 저장소(`<storeDir>/<projectKey>`)가 프로젝트 안이면 꺼짐("the time-machine store is inside the project") — 스냅샷이 저장소 자신을 담게 되므로.
+1. **The baseline is taken when git is first needed** (right before the first mutating tool, or at the first `/tm` command that uses git). The hook's `$` can only be trusted while that hook is alive, and this also avoids delaying session start by the git time. Baseline = "the state just before the first recorded change". It replaces "baseline at session start" in §4.2 and §5.
+2. **Bash is snapshotted in all cases by default.** Even a command that classify sees as `search` can write a file through a redirection (`cat > f <<EOF`). If nothing changed there is no commit, so the cost is one tree hash. Turning on userConfig `skipSearchBash` (default false) skips `search` commands. It replaces `snapshotReadOnlyBash` of §4.2.
+3. **Conditions that turn snapshots off**: off if the session root is `/` or HOME; off if the baseline snapshot takes more than 5 seconds (because every later mutating tool would be that much slower). The reason is shown in the status line and in `/tm`.
+4. `turn.step` is a generator hook, so no `.catch` is attached, and all recording is done inside a try.
+5. The git wrapper uses, for each hook, a Runner built from that hook's `$` (`git.runner = runnerOf($)`).
+6. Re-run input: a step recorded in this load is re-run with the original input kept in memory. Stored input may have been truncated or masked (`inputLossy`), so such a step is not re-run in another load.
+7. **Store location**: if `storeDir` (after `~` expansion) is not an absolute path, snapshots are off ("storeDir must be an absolute path"). If the store (`<storeDir>/<projectKey>`) is inside the project, snapshots are off ("the time-machine store is inside the project") — because the snapshot would then contain the store itself.

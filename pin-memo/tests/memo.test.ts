@@ -4,8 +4,8 @@ import { emptyDocument, decodeDocument, execute } from '../hooks/core/memo.ts'
 const run = (args: string) => execute(emptyDocument(), args).document
 
 test('adds plain and checked notes while preserving multiline Unicode', () => {
-  expect(run('  한글\nsecond  ').items).toEqual([{ id: 1, text: '한글\nsecond', checked: null }])
-  expect(run('- [ ] 배포').items[0]).toEqual({ id: 1, text: '배포', checked: false })
+  expect(run('  ＡＢ\nsecond  ').items).toEqual([{ id: 1, text: 'ＡＢ\nsecond', checked: null }])
+  expect(run('- [ ] deploy').items[0]).toEqual({ id: 1, text: 'deploy', checked: false })
   expect(run('[X] done').items[0]?.checked).toBe(true)
   expect(run('add clear').items[0]?.text).toBe('clear')
   expect(run('add \x1b[31mred\x1b[0m\x07').items[0]?.text).toBe('red')

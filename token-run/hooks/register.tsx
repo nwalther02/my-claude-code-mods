@@ -18,17 +18,17 @@ async function close($: EngineInterface, state: AdapterState): Promise<void> {
 async function start($: EngineInterface, state: AdapterState): Promise<string> {
   const opening = state.runId
   await records($, state).load()
-  if (opening !== state.runId || !state.supported) return 'Token Run · 열기 요청이 취소되었습니다.'
+  if (opening !== state.runId || !state.supported) return 'Token Run · The open request was cancelled.'
   if (!state.open) { state.runId++; state.open = true }
   const current = state.runId
   try {
     const result = await $.ui.open({ id: PANE, title: 'Token Run', focus: true, closeOnEscape: true, rows: 8, columns: 64 })
-    if (current !== state.runId || !state.open) return 'Token Run · 열기 요청이 취소되었습니다.'
+    if (current !== state.runId || !state.open) return 'Token Run · The open request was cancelled.'
     paint($)
-    return result.isPlaced ? 'Token Run · 트랙 클릭 또는 Jump로 시작. P: 정지 · Q: 닫기.' : 'Token Run · 패널을 표시할 공간이 필요해요.'
+    return result.isPlaced ? 'Token Run · Click the track or Jump to start. P: pause · Q: close.' : 'Token Run · The panel needs more room to open.'
   } catch {
     if (current === state.runId) detach(state)
-    return 'Token Run 패널을 열지 못했어요. /token-run으로 다시 시도하세요.'
+    return 'Could not open the Token Run panel. Try /token-run again.'
   }
 }
 export const register: Register = on => {
@@ -71,7 +71,7 @@ export const register: Register = on => {
   on('command.run', { command: 'token-run' }, async ($, e) => {
     const args = (e.args ?? '').trim()
     if (args === 'help') return { text: HELP }
-    if (args === 'close') { try { await close($, state) } catch { /* Can retry close via engine controls. */ }; return { text: 'Token Run · 작업으로 돌아갑니다.' } }
+    if (args === 'close') { try { await close($, state) } catch { /* Can retry close via engine controls. */ }; return { text: 'Token Run · Back to work.' } }
     if (args !== '') return { text: 'Usage: /token-run [help|close]' }
     if (!state.supported) return { text: 'Token Run requires an interactive terminal or desktop session. /token-run help' }
     return { text: await start($, state) }
@@ -99,7 +99,7 @@ export const register: Register = on => {
     if (e.props.hasSurvey || e.props.bodyColumns < 24 || e.props.maxRows < 1 || !state.supported || state.requests.snapshot().status !== 'failed' || state.open) return existing
     if (e.surface !== 'terminal' && e.surface !== 'desktop') return existing
     const { Box, Button } = $.ui.resolve(e)
-    return <Box flexDirection="column">{existing}<Button key="run-invite" plain label="요청 실패 · 잠깐 달려볼까요?" onPress={async () => { await start($, state) }} /></Box>
+    return <Box flexDirection="column">{existing}<Button key="run-invite" plain label="Request failed · Quick run?" onPress={async () => { await start($, state) }} /></Box>
   })
   on('ui.render', { component: 'Pane' }, async ($, e, next) => {
     const existing = await next(e)

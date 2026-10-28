@@ -1,6 +1,6 @@
 # Token Run
 
-A small, fully local ASCII runner for Claude Code. Jump over BUG, 429 and TIMEOUT obstacles while a request is unavailable, or take a short break with `/token-run`. [한국어](README_KR.md).
+A small, fully local ASCII runner for Claude Code. Jump over BUG, 429 and TIMEOUT obstacles while a request is unavailable, or take a short break with `/token-run`.
 
 ## Install and start
 
@@ -83,6 +83,6 @@ The `command.run` hook answers only `/token-run [help|close]` and controls the l
 
 In `tests/adapter.test.ts`, `command($, args)` calls the engine's fixed `$.command.run({ command: 'token-run', ... })` only to exercise this mod in the test harness. The `complete($, ...)` helper calls the engine-owned `$.turn.complete(...)` with a synthetic turn result. The latter is the unknown call reported at the cited test line: it is not supplied by another plugin and makes no network/process call. Store reads are in-memory test fixtures or local best-score reads. Constructors initialize game/request state.
 
-The optional `qa/pty_smoke.py` builds its child environment from fixed OS metadata (PATH, home directory, LANG, TERM), then adds an isolated test config, refused loopback API URL and placeholder key. It does not enumerate or copy installer environment variables, so unrelated API tokens are not forwarded. Its control sequences and Korean control labels are UI data, not shell programs. Runtime gameplay remains fully local.
+The optional `qa/pty_smoke.py` builds its child environment from fixed OS metadata (PATH, home directory, LANG, TERM), then adds an isolated test config, refused loopback API URL and placeholder key. It does not enumerate or copy installer environment variables, so unrelated API tokens are not forwarded. Its control sequences and control labels are UI data, not shell programs. Runtime gameplay remains fully local.
 
 For the reported `store.get` / unknown-call pair: `complete($, ...)` is a test-driver call to the host engine’s `$.turn.complete`, not an HTTP transport or an extension from another plugin. Its arguments are the fixed synthetic answer/reason/duration fixture, with test IDs; stored scores and checkpoints are not passed as its arguments. It returns the synthetic completion to local assertions and event observers. No remote host or external data destination exists in this test path.

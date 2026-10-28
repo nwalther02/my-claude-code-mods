@@ -2835,20 +2835,20 @@ Add to the root `README.md` list under `## Mods`:
 
 `time-machine/README.md` (Korean, like the other mods' READMEs). Sections, each with the content below:
 
-1. 제목과 한 단락 소개 — 에이전트가 여러 파일을 바꾸다 엉뚱한 결과를 냈을 때 Git diff로는 알 수 없는 "순서, 도구 호출, 그때의 파일 상태, 결과"를 기록하고 되돌아가 본다. 스펙의 Session #184 예시 트리를 그대로 넣는다.
-2. 설치 — `/plugin install time-machine --marketplace YeonwooSung/my-claude-code-mods`; Claude Code 2.1.287+; git 필요.
-3. 명령 표 — `/tm` 하위 명령 전부(스펙 §4.8 표와 같은 내용, `/tm-pane` 포함)와 상태줄 형식.
-4. 어떻게 기록하나 — 섀도 git(위치, 세션별 인덱스, ref 이름, 사용자 `.git` 불간섭, `.gitignore` 존중), 변경성 도구 뒤 스냅샷(모든 Bash 기본, `skipSearchBash`), 외부 변경 step, 베이스라인은 첫 변경 직전, 동시 도구 호출 시 `concurrent`.
-5. 관찰 가능성 등급 표 — 스펙 §2 표.
-6. 인과(why) — 기준(마지막 통과 실행), 점수 규칙(실패 출력 언급 +100, 파일명만 +60, 실패 위치 +50, 최근성 0–20, 변경 횟수 0–10), fixed by, improved, "추론이지 증명이 아님".
-7. 복구·분기 — dry run 기본, `--yes`, 복구 전 스냅샷, 대화에 노트 추가, 대화는 되감지 않음, 무시 파일은 그대로.
-8. 재실행 — 기본(같은 입력, 권한 확인, 변경성은 `--write`), `--isolated`(Bash만, 그 시점 스냅샷 복사본에서, 무시 파일 없음, 권한 다이얼로그를 거치지 않음 — 사용자 명령으로만), 저장된 입력이 잘렸거나 마스킹된 step은 다른 로드에서 재실행 불가.
-9. 파일 복구 ≠ 결정적 재현 — 스펙 §1 경계와 §9 v2 설계 요약.
-10. 설정 — `storeDir`, `retentionDays`, `recordModelOutput`, `skipSearchBash` 표(기본값 포함).
-11. 저장 형식 — `sessions/<id>/meta.json`, `<load>-<n>.jsonl` 레코드 종류(session/turn/step/model/branch), 입력 4 KiB·결과 2 KiB 자름과 마스킹.
-12. 실행 환경 표 — 터미널/VS Code/`-p`.
-13. 한계 — git 없거나 루트가 HOME·`/`이거나 베이스라인 5초 초과 시 스냅샷 꺼짐; 큰 저장소에선 변경성 도구마다 스냅샷 시간이 더해짐(상태줄에 평균); 백그라운드 Bash의 나중 변경은 다음 스냅샷에 붙음; 동시 도구 호출의 스냅샷 귀속은 근사; 테스트 파서가 모르는 형식은 종료 상태만; 사용자의 `.git/info/exclude`는 섀도 저장소에 적용되지 않음.
-14. 개발 — `CLAUDE292` 테스트 명령, types 복사, tsc, validate; 단위 테스트는 가짜 git 러너로, 진짜 git은 E2E로.
+1. Title and a one-paragraph introduction — when an agent changes several files and ends up with an unexpected result, record and go back over the "order, tool calls, file state at that time, results" that a Git diff cannot tell you. Include the spec's Session #184 example tree as it is.
+2. Installation — `/plugin install time-machine --marketplace YeonwooSung/my-claude-code-mods`; Claude Code 2.1.287+; git required.
+3. Command table — all `/tm` subcommands (same content as the spec §4.8 table, including `/tm-pane`) and the status line format.
+4. How it records — shadow git (location, per-session index, ref names, no interference with the user's `.git`, respects `.gitignore`), snapshot after mutating tools (all Bash by default, `skipSearchBash`), external change step, baseline right before the first change, `concurrent` for simultaneous tool calls.
+5. Observability grades table — the spec §2 table.
+6. Causality (why) — baseline (last passing run), scoring rules (mentioned in failure output +100, filename only +60, failure location +50, recency 0–20, number of changes 0–10), fixed by, improved, "an inference, not a proof".
+7. Restore and branch — dry run by default, `--yes`, snapshot before restore, note added to the conversation, the conversation is not rewound, ignored files stay as they are.
+8. Re-run — default (same input, permission check, `--write` for mutating tools), `--isolated` (Bash only, from a copy of the snapshot at that point, no ignored files, does not go through the permission dialog — user command only), a step whose stored input was truncated or masked cannot be re-run in another load.
+9. File restore ≠ deterministic reproduction — summary of the spec §1 boundary and the §9 v2 design.
+10. Settings — table of `storeDir`, `retentionDays`, `recordModelOutput`, `skipSearchBash` (with defaults).
+11. Storage format — `sessions/<id>/meta.json`, record kinds in `<load>-<n>.jsonl` (session/turn/step/model/branch), truncation of input to 4 KiB and results to 2 KiB, and masking.
+12. Execution environments table — terminal/VS Code/`-p`.
+13. Limits — snapshots are off when git is missing, the root is HOME or `/`, or the baseline exceeds 5 seconds; in a large repository the snapshot time is added to every mutating tool (average shown in the status line); later changes from a background Bash attach to the next snapshot; the attribution of snapshots for simultaneous tool calls is approximate; for formats the test parser does not know, only the exit status; the user's `.git/info/exclude` does not apply to the shadow repository.
+14. Development — the `CLAUDE292` test command, copying the types, tsc, validate; unit tests with a fake git runner, real git in E2E.
 
 - [ ] **Step 3: End-to-end run with real git (one process, stream-json input)**
 

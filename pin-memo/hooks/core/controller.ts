@@ -3,7 +3,7 @@ export type Storage = { get(key: string): Promise<unknown>; set(key: string, val
 type Context = { key: string; generation: number; ready: Promise<void>; tail: Promise<void>; document?: MemoDocument; error?: string }
 
 export function storeKey(cwd: string, id: string): string {
-  if (!cwd || !id || !/^(?:\/|[A-Za-z]:[\\/])/.test(cwd)) throw new Error('세션 폴더와 ID를 확인할 수 없습니다.')
+  if (!cwd || !id || !/^(?:\/|[A-Za-z]:[\\/])/.test(cwd)) throw new Error('Cannot determine the session folder and ID.')
   const folder = cwd.startsWith('/') ? cwd.replace(/\/+$/, '') || '/'
     : /^[A-Za-z]:[\\/]$/.test(cwd) ? cwd : cwd.replace(/[\\/]+$/, '')
   return `pin-memo:v1:${JSON.stringify([folder, id])}`
@@ -26,7 +26,7 @@ export class MemoController {
     ctx.ready = (async () => {
       await prior
       try { ctx.document = decodeDocument(await this.store.get(key)); ctx.error = undefined }
-      catch (error) { ctx.error = `메모를 불러오지 못했습니다: ${error instanceof Error ? error.message : String(error)}` }
+      catch (error) { ctx.error = `Could not load memos: ${error instanceof Error ? error.message : String(error)}` }
     })()
     return ctx.ready
   }
@@ -40,17 +40,17 @@ export class MemoController {
 
   async run(args: string, expectedKey?: string, expectedGeneration?: number): Promise<CommandResult> {
     const ctx = this.current
-    if (!ctx || (expectedKey !== undefined && ctx.key !== expectedKey) || (expectedGeneration !== undefined && ctx.generation !== expectedGeneration)) throw new Error('세션이 바뀌었습니다. 현재 메모 화면에서 다시 실행하세요.')
+    if (!ctx || (expectedKey !== undefined && ctx.key !== expectedKey) || (expectedGeneration !== undefined && ctx.generation !== expectedGeneration)) throw new Error('The session changed. Run the command again from the current memo view.')
     const work = ctx.tail.then(async () => {
       await ctx.ready
-      if (this.current !== ctx) throw new Error('세션이 바뀌었습니다. 현재 메모 화면에서 다시 실행하세요.')
-      if (!ctx.document && args.trim() !== 'clear') throw new Error(ctx.error ?? '메모를 불러오는 중입니다.')
+      if (this.current !== ctx) throw new Error('The session changed. Run the command again from the current memo view.')
+      if (!ctx.document && args.trim() !== 'clear') throw new Error(ctx.error ?? 'Memos are still loading.')
       const recovering = !ctx.document
       const result = execute(ctx.document ?? emptyDocument(), args)
       if (result.changed || recovering) {
         try { await this.store.set(ctx.key, result.document) }
         catch (error) {
-          ctx.error = `메모를 저장하지 못했습니다: ${error instanceof Error ? error.message : String(error)}`
+          ctx.error = `Could not save memos: ${error instanceof Error ? error.message : String(error)}`
           throw new Error(ctx.error)
         }
         ctx.document = result.document

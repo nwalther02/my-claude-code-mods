@@ -219,7 +219,7 @@ def main():
             first.wait(lambda: first.score()[0] == -1, 'escape-close')
             # Real main-turn failure against an unavailable loopback endpoint.
             first.command('offline-check')
-            first.wait(lambda: '요청 실패' in first.text, 'request-failure-invite', timeout=45)
+            first.wait(lambda: 'Quick run?' in first.text, 'request-failure-invite', timeout=45)
             first.command('/token-run')
             first.wait(lambda: 'CLICK + SPACE' in first.text, 'open-after-request-failure')
             first.track_click()
