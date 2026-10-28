@@ -1,7 +1,5 @@
 # Loop Detective
 
-**English** | [한국어](README_KR.md)
-
 A Claude Code mod that opens a case when the same Bash command produces the same failure repeatedly. It connects observed edits to subsequent retries and presents possible next checks. It observes only: tool execution, permissions, prompts and files are never changed.
 
 ## Install

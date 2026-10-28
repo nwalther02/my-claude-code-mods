@@ -5,23 +5,23 @@
 ## Mods
 
 - [agent-profiler](agent-profiler/README.md): shows where a session's time goes (model wait, tools, subagents, re-reads) and exports OTLP traces for Jaeger/Tempo.
-- [context-inspector](context-inspector/README.md) ([한국어](context-inspector/README_KR.md)): analyzes context waste in Claude sessions, including what fills the window, re-reads, near-duplicate outputs, and what compaction kept, providing advice.
-- [time-machine](time-machine/README.md) ([한국어](time-machine/README_KR.md)): records every tool call on a branching timeline with shadow-git snapshots, so you can see the files as they were at any step, explain which edit broke a test, restore, branch, compare runs and re-run steps.
-- [loop-detective](loop-detective/README.md) ([한국어](loop-detective/README_KR.md)): detects repeated Bash failures and edit/retry cycles, with evidence, investigation prompts, a live case pane and bounded history.
-- [pin-memo](pin-memo/README.md) ([한국어](pin-memo/README_KR.md)): pins memos and clickable todos above the input, restoring them when the same folder/session is resumed.
-- [model-effort-band](model-effort-band/README.md) ([한국어](model-effort-band/README_KR.md)): shows the selected model and observed main-thread effort in a colored band above the prompt.
-- [token-run](token-run/README.md) ([한국어](token-run/README_KR.md)): a fully local ASCII runner for request failures and short breaks, with jump controls and a saved best score.
+- [context-inspector](context-inspector/README.md): analyzes context waste in Claude sessions, including what fills the window, re-reads, near-duplicate outputs, and what compaction kept, providing advice.
+- [time-machine](time-machine/README.md): records every tool call on a branching timeline with shadow-git snapshots, so you can see the files as they were at any step, explain which edit broke a test, restore, branch, compare runs and re-run steps.
+- [loop-detective](loop-detective/README.md): detects repeated Bash failures and edit/retry cycles, with evidence, investigation prompts, a live case pane and bounded history.
+- [pin-memo](pin-memo/README.md): pins memos and clickable todos above the input, restoring them when the same folder/session is resumed.
+- [model-effort-band](model-effort-band/README.md): shows the selected model and observed main-thread effort in a colored band above the prompt.
+- [token-run](token-run/README.md): a fully local ASCII runner for request failures and short breaks, with jump controls and a saved best score.
 
-- [verify-board](verify-board/README.md) ([한국어](verify-board/README_KR.md)): Revision-aware verification results: PASS, FAIL, STALE and UNKNOWN.
-- [scope-guard](scope-guard/README.md) ([한국어](scope-guard/README_KR.md)): Allowed-path warnings with rename and pre-existing-change awareness.
-- [blast-radius](blast-radius/README.md) ([한국어](blast-radius/README_KR.md)): Local reverse-import impact and related test candidates.
-- [decision-ledger](decision-ledger/README.md) ([한국어](decision-ledger/README_KR.md)): Explicit decisions with rationale, rejected alternatives and file references.
-- [handoff-pack](handoff-pack/README.md) ([한국어](handoff-pack/README_KR.md)): Resumable Markdown previews of goals, tasks, changes and evidence.
-- [command-shelf](command-shelf/README.md) ([한국어](command-shelf/README_KR.md)): Successful-command history with explicit permission-aware replay.
-- [env-doctor](env-doctor/README.md) ([한국어](env-doctor/README_KR.md)): Project runtime requirements and environment-variable presence checks.
-- [dependency-lens](dependency-lens/README.md) ([한국어](dependency-lens/README_KR.md)): Direct and transitive npm dependency changes and install-script markers.
-- [assumption-tracker](assumption-tracker/README.md) ([한국어](assumption-tracker/README_KR.md)): Evidence-backed assumption states with retained transition history.
-- [review-queue](review-queue/README.md) ([한국어](review-queue/README_KR.md)): Purpose-grouped file review with staged/unstaged freshness checks.
+- [verify-board](verify-board/README.md): Revision-aware verification results: PASS, FAIL, STALE and UNKNOWN.
+- [scope-guard](scope-guard/README.md): Allowed-path warnings with rename and pre-existing-change awareness.
+- [blast-radius](blast-radius/README.md): Local reverse-import impact and related test candidates.
+- [decision-ledger](decision-ledger/README.md): Explicit decisions with rationale, rejected alternatives and file references.
+- [handoff-pack](handoff-pack/README.md): Resumable Markdown previews of goals, tasks, changes and evidence.
+- [command-shelf](command-shelf/README.md): Successful-command history with explicit permission-aware replay.
+- [env-doctor](env-doctor/README.md): Project runtime requirements and environment-variable presence checks.
+- [dependency-lens](dependency-lens/README.md): Direct and transitive npm dependency changes and install-script markers.
+- [assumption-tracker](assumption-tracker/README.md): Evidence-backed assumption states with retained transition history.
+- [review-queue](review-queue/README.md): Purpose-grouped file review with staged/unstaged freshness checks.
 
 ## Local workflow-mod preview
 

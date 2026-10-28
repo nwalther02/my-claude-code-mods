@@ -1,6 +1,6 @@
 # Pin Memo
 
-Pin notes and clickable todos above Claude Code's input. Notes and completion states return when you resume **the same session in the same folder**. [한국어](README_KR.md).
+Pin notes and clickable todos above Claude Code's input. Notes and completion states return when you resume **the same session in the same folder**.
 
 ## Install
 

@@ -1,7 +1,5 @@
 # Time Machine — a time machine for agents
 
-**English** | [한국어](README_KR.md)
-
 When an agent changes several files and ends up somewhere wrong, a Git diff only tells you "what changed".
 Time Machine records **in what order, which tool call, on which file state, produced which result**, and lets you go back to any step to see the files and tool calls as they were then.
 It also supports tracing causality between file edits and test failures, restoring a point in time, branching, comparing two runs, and re-running a step with the same input.

@@ -1,7 +1,5 @@
 # Context Inspector — context waste analyzer
 
-**English** | [한국어](README_KR.md)
-
 A mod that shows what fills the context window in a Claude Code session, why the same information comes back in again, and what compaction kept and lost.
 It only observes: it never changes rows, tool calls or compaction.
 
