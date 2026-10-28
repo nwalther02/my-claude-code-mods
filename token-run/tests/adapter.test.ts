@@ -53,7 +53,7 @@ test('main request error invites without opening; click opens while preserving o
   expect(await complete($)).toEqual({text:'original answer'})
   expect(env.opened).toHaveLength(0)
   const ui=await $.ui.mount({plugin:'token-run',surface:'terminal',component:'AbovePrompt',props:BAND})
-  expect((await ui.find({key:'run-invite'}))?.text).toContain('요청 실패')
+  expect((await ui.find({key:'run-invite'}))?.text).toContain('Request failed')
   expect((await ui.find({key:'other-mod'}))?.text).toBe('other mod')
   await ui.press({key:'run-invite'})
   expect(env.opened).toHaveLength(1)
@@ -82,7 +82,7 @@ test('stream chunks and generator result pass exactly once; response updates an 
   expect(await stream.next()).toEqual({done:true,value:RESULT})
   expect(calls).toBe(1)
   await ui.redraw()
-  expect((await ui.find({key:'run-status',in:'runner'}))?.text).toContain('응답이 돌아왔어요')
+  expect((await ui.find({key:'run-status',in:'runner'}))?.text).toContain('Response is back')
 })
 
 test('subagent stream cannot announce recovery and invalidate errors never retry downstream',async($,on)=>{
@@ -91,7 +91,7 @@ test('subagent stream cannot announce recovery and invalidate errors never retry
   await $.session.start(START);await $.turn.start({turnId:'t1',text:''});await complete($);await command($)
   for await(const _ of $.turn.step({...STEP,agentId:'worker',turnId:'a1'})) {}
   const ui=await mount($)
-  expect((await ui.find({key:'run-status',in:'runner'}))?.text).not.toContain('응답이 돌아왔어요')
+  expect((await ui.find({key:'run-status',in:'runner'}))?.text).not.toContain('Response is back')
   for await(const _ of $.turn.step(STEP)) {}
   expect(calls).toBe(2)
 })
@@ -184,7 +184,7 @@ test('session end removes the game and ignores subsequent old posts; saved best 
 
 test('storage failure warns without stopping frames; unsupported sessions explain the limitation',async($,on)=>{
   setup(on,{failRead:true});await $.session.start(START);await command($);const ui=await mount($)
-  expect((await ui.find({key:'run-status',in:'runner'}))?.text).toContain('기록')
+  expect((await ui.find({key:'run-status',in:'runner'}))?.text).toContain('best score')
   await ui.key({key:' '});await ui.advance(1000)
   expect((await ui.find({key:'run-score',in:'runner'}))?.text).toContain('SCORE 1')
   await $.session.start({...START,surface:null,isInteractive:false})
@@ -238,8 +238,7 @@ for(const mode of ['recovered','save-warning'] as const) {
     if(mode==='recovered') await complete($,'answer')
     await ui.redraw()
     const raw=(await ui.find({key:'run-phase',in:'runner'}))?.text ?? ''
-    let cells=0,visible=''
-    for(const ch of raw) {const width=/[가-힣]/.test(ch)?2:1;if(cells+width>24)break;visible+=ch;cells+=width}
+    const visible=Array.from(raw).slice(0,24).join('')
     expect(visible).toContain('GAME OVER')
     expect(visible).toContain('R')
     expect(visible).toContain(mode==='recovered'?'BACK:Esc':'SAVE!')

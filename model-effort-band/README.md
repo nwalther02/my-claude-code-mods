@@ -4,13 +4,13 @@ A colored band directly above the Claude Code prompt shows the selected model an
 
 ```text
 ╭────────────────────────────────────────────────────────────╮
-│ Haiku 4.5 │ effort ▰▱▱▱▱ low · 빠르게                Haiku │
+│ Haiku 4.5 │ effort ▰▱▱▱▱ low                         Haiku │
 ╰────────────────────────────────────────────────────────────╯
 ╭────────────────────────────────────────────────────────────╮
-│ Sonnet 4.6 │ effort ▰▰▱▱▱ medium · 보통             Sonnet │
+│ Sonnet 4.6 │ effort ▰▰▱▱▱ medium                    Sonnet │
 ╰────────────────────────────────────────────────────────────╯
 ╭────────────────────────────────────────────────────────────╮
-│ Opus 4.6 │ effort ▰▰▰▱▱ high · 깊게                  Opus │
+│ Opus 4.6 │ effort ▰▰▰▱▱ high                         Opus │
 ╰────────────────────────────────────────────────────────────╯
 ```
 
@@ -33,7 +33,7 @@ Mods load by default starting with Claude Code 2.1.287. This mod's event and ren
 
 ## What the effort means
 
-- `low`, `medium`, `high`, `xhigh`, `max` fill one through five gauge cells. The Korean captions describe effort, not measured speed or answer quality.
+- `low`, `medium`, `high`, `xhigh`, `max` fill one through five gauge cells. The gauge shows the effort setting, not measured speed or answer quality.
 - The selected model is read on every render. Effort comes only from a main `turn.step` observed by this mod. No defaults are guessed from model family or settings.
 - Before the first effort observation, after a new session/reload, or after model/settings changes, effort displays `unknown` until observed again. Any configuration-change attempt clears observation before the writer runs; so does starting `/model`, `/effort`, or `/config`. Denied or failed changes and cancelled pickers can therefore temporarily show `unknown` until the next observed main step. These hooks delegate directly to the engine without inspecting or changing its result; the SDK has no post-write notification for distinguishing denied attempts.
 - If the request's model differs from the selected model, effort stays `unknown`. This includes alias/resolved-ID mismatches and request fallbacks. This band shows the **selected model**, not a history of actual request models.
@@ -42,7 +42,7 @@ Mods load by default starting with Claude Code 2.1.287. This mod's event and ren
 
 ## Layout and surfaces
 
-The band has a rounded border, model label on the left, effort beside it, and a family badge at the right. At fewer than 60 columns it omits the gauge, caption, and badge. Below 30 columns or with fewer than three available rows it uses one unbordered line. Text truncates rather than wrapping. A survey takes precedence and hides the band. Other mods' `AbovePrompt` content is preserved before this band; the engine manages scrolling of combined content.
+The band has a rounded border, model label on the left, effort beside it, and a family badge at the right. At fewer than 60 columns it omits the gauge and badge. Below 30 columns or with fewer than three available rows it uses one unbordered line. Text truncates rather than wrapping. A survey takes precedence and hides the band. Other mods' `AbovePrompt` content is preserved before this band; the engine manages scrolling of combined content.
 
 Terminal and Desktop support the render site. VS Code chat and headless mode have no visual band. There are no model requests, prompt changes, file writes, network calls, polling timers, or persistent state in this mod.
 

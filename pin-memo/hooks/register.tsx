@@ -13,18 +13,18 @@ async function refresh($: EngineInterface, state: AdapterState): Promise<{ contr
   try {
     const [cwd, id] = await Promise.all([$.session.cwd(), $.session.id()])
     const key = storeKey(cwd, id)
-    if (request < state.appliedRequest && state.controller?.snapshot().key !== key) throw new Error('세션 확인 요청이 변경되었습니다.')
+    if (request < state.appliedRequest && state.controller?.snapshot().key !== key) throw new Error('The session lookup request changed.')
     state.appliedRequest = Math.max(request, state.appliedRequest)
     state.controller ??= new MemoController({ get: key => $.store.get(key), set: (key, value) => $.store.set(key, value) })
     state.identityError = undefined
     await state.controller.activate(cwd, id)
-    if (state.controller.snapshot().key !== key) throw new Error('세션이 바뀌었습니다.')
+    if (state.controller.snapshot().key !== key) throw new Error('The session changed.')
     return { controller: state.controller, key }
   } catch (error) {
     if (request >= state.appliedRequest) {
       state.appliedRequest = request
       state.controller?.detach()
-      state.identityError = '세션 폴더와 ID를 확인할 수 없습니다.'
+      state.identityError = 'Cannot determine the session folder and ID.'
     }
     throw error
   }

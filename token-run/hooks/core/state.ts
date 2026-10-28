@@ -48,7 +48,7 @@ export class Scores {
   load(): Promise<void> {
     return this.enqueue(async () => {
       try { this.best = Math.max(this.best, decode(await this.store.get(SCORE_KEY))); this.error = undefined }
-      catch { this.error = '최고 기록을 불러오지 못했어요. 게임은 계속할 수 있어요.' }
+      catch { this.error = 'Could not load the best score. You can keep playing.' }
     })
   }
   save(value: number): Promise<void> {
@@ -60,7 +60,7 @@ export class Scores {
         this.best = Math.max(this.best, stored)
         if (this.best > stored) await this.store.set(SCORE_KEY, { version: 1, best: this.best })
         this.error = undefined
-      } catch { this.error = '최고 기록을 저장하지 못했어요. 이번 실행의 기록은 유지돼요.' }
+      } catch { this.error = 'Could not save the best score. This run still counts.' }
     })
   }
 }

@@ -53,7 +53,7 @@ test('compacts narrow sites and uses one unbordered line when rows are limited',
   const compact = JSON.stringify(await $.ui.render(renderInput(40, 3)))
   expect(compact).toContain('Opus 4.6')
   expect(compact).toContain('round')
-  expect(compact).not.toContain('확인 전')
+  expect(compact).toContain('unknown')
   const inline = JSON.stringify(await $.ui.render(renderInput(29, 3)))
   expect(inline).toContain('effort unknown')
   expect(inline).not.toContain('round')
@@ -71,7 +71,7 @@ test('preserves each streamed chunk and the generator final result', async ($, o
   expect(await iterator.next()).toEqual({ done: true, value: RESULT })
   const content = JSON.stringify(await $.ui.render(renderInput()))
   expect(content).toContain('high')
-  expect(content).toContain('깊게')
+  expect(content).toContain('▰▰▰▱▱')
 })
 
 test('subagent steps and omitted main effort preserve the last effort', async ($, on) => {
@@ -79,9 +79,9 @@ test('subagent steps and omitted main effort preserve the last effort', async ($
   stream(on)
   for await (const _ of $.turn.step({ turnId: 't1', index: 0, model: 'claude-opus-4-6', effort: 'low', messageCount: 1 })) {}
   for await (const _ of $.turn.step({ turnId: 'a1', index: 0, model: 'haiku', effort: 'max', agentId: 'agent1', messageCount: 1 })) {}
-  expect(JSON.stringify(await $.ui.render(renderInput()))).toContain('빠르게')
+  expect(JSON.stringify(await $.ui.render(renderInput()))).toContain('▰▱▱▱▱')
   for await (const _ of $.turn.step({ turnId: 't1', index: 1, model: 'claude-opus-4-6', messageCount: 1 })) {}
-  expect(JSON.stringify(await $.ui.render(renderInput()))).toContain('빠르게')
+  expect(JSON.stringify(await $.ui.render(renderInput()))).toContain('▰▱▱▱▱')
 })
 
 test('reads the selected model on every paint and hides mismatched request effort', async ($, on) => {
@@ -94,7 +94,7 @@ test('reads the selected model on every paint and hides mismatched request effor
   const content = JSON.stringify(await $.ui.render(renderInput()))
   expect(content).toContain('Sonnet 4.6')
   expect(content).toContain('unknown')
-  expect(content).not.toContain('깊게')
+  expect(content).not.toContain('▰▰▰▱▱')
 })
 
 test('a failed model lookup displays unknown instead of an old observed model', async ($, on) => {
@@ -115,7 +115,7 @@ test('invalidate failure does not repeat downstream execution', async ($, on) =>
   for await (const chunk of $.turn.step({ turnId: 't1', index: 0, model: 'claude-opus-4-6', effort: 'high', messageCount: 1 })) chunks.push(chunk)
   expect(chunks).toEqual([{ kind: 'text', index: 0, text: 'once' }])
   expect(calls).toBe(1)
-  expect(JSON.stringify(await $.ui.render(renderInput()))).toContain('깊게')
+  expect(JSON.stringify(await $.ui.render(renderInput()))).toContain('▰▰▰▱▱')
 })
 
 test('propagates downstream streaming failure without retry', async ($, on) => {
@@ -143,19 +143,19 @@ test('retains the last effort during tools, idle renders and the next turn', asy
   try {
     const input = renderInput()
     const content = JSON.stringify(await $.ui.render({ ...input, props: { ...input.props, isWorking: true } }))
-    expect(content).toContain('깊게')
+    expect(content).toContain('▰▰▰▱▱')
     expect(content).not.toContain('unknown')
   } finally {
     release()
     await tool
   }
-  expect(JSON.stringify(await $.ui.render(renderInput()))).toContain('깊게')
+  expect(JSON.stringify(await $.ui.render(renderInput()))).toContain('▰▰▰▱▱')
   await $.turn.start({ text: 'next', turnId: 't2' })
-  expect(JSON.stringify(await $.ui.render(renderInput()))).toContain('깊게')
+  expect(JSON.stringify(await $.ui.render(renderInput()))).toContain('▰▰▰▱▱')
   for await (const _ of $.turn.step({ turnId: 't2', index: 0, model: 'claude-opus-4-6', messageCount: 1 })) {}
-  expect(JSON.stringify(await $.ui.render(renderInput()))).toContain('깊게')
+  expect(JSON.stringify(await $.ui.render(renderInput()))).toContain('▰▰▰▱▱')
   for await (const _ of $.turn.step({ turnId: 't2', index: 1, model: 'claude-opus-4-6', effort: 'low', messageCount: 1 })) {}
-  expect(JSON.stringify(await $.ui.render(renderInput()))).toContain('빠르게')
+  expect(JSON.stringify(await $.ui.render(renderInput()))).toContain('▰▱▱▱▱')
 })
 
 test('ending the session clears the retained effort before a missing-effort request', async ($, on) => {
@@ -192,8 +192,8 @@ test('settings commands clear before execution and retain effort observed while 
   for await (const _ of $.turn.step({ turnId: 't1', index: 0, model: 'claude-opus-4-6', effort: 'high', messageCount: 1 })) {}
   expect(await $.command.run({ command: 'effort', args: '', origin: { kind: 'composer' }, presentation: { isFullscreen: false, columns: 100 } })).toEqual({ text: 'picker closed' })
   expect(during).toContain('unknown')
-  expect(during).not.toContain('깊게')
-  expect(JSON.stringify(await $.ui.render(renderInput()))).toContain('빠르게')
+  expect(during).not.toContain('▰▰▰▱▱')
+  expect(JSON.stringify(await $.ui.render(renderInput()))).toContain('▰▱▱▱▱')
 })
 
 test('settings clear effort before the downstream writer runs', async ($, on) => {
@@ -207,7 +207,7 @@ test('settings clear effort before the downstream writer runs', async ($, on) =>
   for await (const _ of $.turn.step({ turnId: 't1', index: 0, model: 'claude-opus-4-6', effort: 'high', messageCount: 1 })) {}
   expect(await $.config.set({ key: 'verbose', value: true, previous: false, provider: { plugin: 'engine', tier: 'core' }, origin: { kind: 'composer' } })).toEqual({ value: true })
   expect(during).toContain('unknown')
-  expect(during).not.toContain('깊게')
+  expect(during).not.toContain('▰▰▰▱▱')
 })
 
 test('settings attempts clear observation while preserving denial and success results', async ($, on) => {
@@ -273,10 +273,10 @@ test('reload and picker model switches clear effort even when the selected model
   }
 })
 
-for (const [model, effort, color, description] of [
-  ['claude-haiku-4-5', 'low', '#8ACFA7', '빠르게'],
-  ['claude-sonnet-4-6', 'medium', '#8BBEF4', '보통'],
-  ['claude-opus-4-6', 'high', '#B99CE5', '깊게'],
+for (const [model, effort, color, meter] of [
+  ['claude-haiku-4-5', 'low', '#8ACFA7', '▰▱▱▱▱'],
+  ['claude-sonnet-4-6', 'medium', '#8BBEF4', '▰▰▱▱▱'],
+  ['claude-opus-4-6', 'high', '#B99CE5', '▰▰▰▱▱'],
 ]) {
   test(`renders the ${model} theme and observed ${effort} gauge`, async ($, on) => {
     setup(on, model)
@@ -285,7 +285,7 @@ for (const [model, effort, color, description] of [
     const tree = await $.ui.render(renderInput(60, 3))
     const content = JSON.stringify(tree)
     expect(content).toContain(color)
-    expect(content).toContain(description)
+    expect(content).toContain(meter)
     expect(content).toContain('truncate-end')
     expect(content).toContain('other-mod')
   })

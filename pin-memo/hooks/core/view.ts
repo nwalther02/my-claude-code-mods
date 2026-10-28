@@ -48,7 +48,7 @@ export function buildView(doc: MemoDocument | undefined, error: string | undefin
   const innerWidth = border ? width - 4 : width
   return {
     border, innerWidth,
-    title: fit(`📌 핀 ${doc?.items.length ?? 0} (완료 ${doc?.items.filter(m => m.checked === true).length ?? 0})`, innerWidth),
+    title: fit(`📌 Pins ${doc?.items.length ?? 0} (done ${doc?.items.filter(m => m.checked === true).length ?? 0})`, innerWidth),
     ...(error ? { error: fit(error.replace(/\s+/g, ' '), innerWidth) } : {}),
     rows: (doc?.items ?? []).map(m => {
       const fullPrefix = m.checked === null ? `${m.id} · ` : `${m.checked ? '[x]' : '[ ]'} ${m.id} `

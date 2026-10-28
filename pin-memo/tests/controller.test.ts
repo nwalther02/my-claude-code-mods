@@ -39,7 +39,7 @@ test('serializes rapid mutations and preserves state when a write fails', async 
   await Promise.all([c.run('toggle 1'), c.run('toggle 1'), c.run('other')])
   expect(c.snapshot().document?.items).toEqual([{ id: 1, text: 'task', checked: false }, { id: 2, text: 'other', checked: null }])
   fail = true
-  await expect(c.run('check 1')).rejects.toThrow('저장')
+  await expect(c.run('check 1')).rejects.toThrow('save')
   expect(c.snapshot().document?.items[0]?.checked).toBe(false)
   fail = false
   await c.run('check 1')
@@ -77,7 +77,7 @@ test('commands wait for initial load and stale loads cannot replace new session'
   await c.run('new note')
   slow.resolve(emptyDocument())
   await loading
-  await expect(queued).rejects.toThrow('세션')
+  await expect(queued).rejects.toThrow('session')
   expect(c.snapshot().document?.items[0]?.text).toBe('new note')
 })
 
@@ -91,7 +91,7 @@ test('old UI key and detached identities cannot modify a new session', async () 
   await expect(c.run('new')).rejects.toThrow()
   await c.activate('/repo', 'new')
   await c.run('[ ] new task')
-  await expect(c.run('toggle 1', oldKey)).rejects.toThrow('세션')
+  await expect(c.run('toggle 1', oldKey)).rejects.toThrow('session')
   expect(c.snapshot().document?.items[0]?.checked).toBe(false)
 })
 

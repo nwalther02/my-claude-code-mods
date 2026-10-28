@@ -1,6 +1,6 @@
 export type Family = 'haiku' | 'sonnet' | 'opus' | 'unknown'
 export type ModelView = { name: string; family: Family; badge: string; color: string; background: string }
-export type EffortView = { value: string; meter: string; description: string; color: string }
+export type EffortView = { value: string; meter: string; color: string }
 export type BandView = { model: ModelView; effort: EffortView; layout: 'full' | 'compact' | 'inline' | 'hidden' }
 
 const THEMES: Record<Family, { badge: string; color: string; background: string }> = {
@@ -37,22 +37,19 @@ export function modelView(model: unknown): ModelView {
 }
 
 export function effortView(effort: unknown): EffortView {
-  const levels: Record<string, [string, string, string]> = {
-    low: ['▰▱▱▱▱', '빠르게', THEMES.haiku.color],
-    medium: ['▰▰▱▱▱', '보통', THEMES.sonnet.color],
-    high: ['▰▰▰▱▱', '깊게', '#E4CC75'],
-    xhigh: ['▰▰▰▰▱', '더 깊게', '#E4CC75'],
-    max: ['▰▰▰▰▰', '최대로', '#E4CC75'],
+  const levels: Record<string, [string, string]> = {
+    low: ['▰▱▱▱▱', THEMES.haiku.color],
+    medium: ['▰▰▱▱▱', THEMES.sonnet.color],
+    high: ['▰▰▰▱▱', '#E4CC75'],
+    xhigh: ['▰▰▰▰▱', '#E4CC75'],
+    max: ['▰▰▰▰▰', '#E4CC75'],
   }
   const value = typeof effort === 'number'
     ? Number.isFinite(effort) && effort >= 0 ? String(effort) : ''
     : clean(effort)
   // Own-property lookup keeps arbitrary future strings such as "constructor" harmless.
   const level = Object.hasOwn(levels, value) ? levels[value] : undefined
-  return {
-    value: value || 'unknown', meter: level?.[0] ?? '',
-    description: level?.[1] ?? (value ? '' : '확인 전'), color: level?.[2] ?? THEMES.unknown.color,
-  }
+  return { value: value || 'unknown', meter: level?.[0] ?? '', color: level?.[1] ?? THEMES.unknown.color }
 }
 
 export function bandView(model: unknown, effort: unknown, columns: number, rows: number): BandView {

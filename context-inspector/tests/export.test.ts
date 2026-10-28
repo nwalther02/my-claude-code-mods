@@ -103,7 +103,7 @@ test('chunkLines single line longer than max goes alone, following line starts f
 })
 
 test('chunkLines multibyte UTF-8: chunks by bytes, not characters', () => {
-  const char = '가'
+  const char = 'Ａ' // U+FF21 FULLWIDTH LATIN CAPITAL LETTER A, 3 bytes in UTF-8
   const byteLength = new TextEncoder().encode(char).length
   expect(byteLength).toBe(3)
   const line = char.repeat(50)

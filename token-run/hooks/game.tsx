@@ -58,7 +58,7 @@ const Runner: ClientModule<GameProps, Local> = (props, surface) => {
   const game = surface.state?.game ?? decodeGame(props.checkpoint) ?? newGame(props.runId)
   const view = gameView(game, Math.min(surface.columns, props.columns), Math.min(surface.rows, props.rows))
   if (!view.playable) return <Box key="run-resize"><Text wrap="truncate-end">{view.lines[0] ?? ''}</Text></Box>
-  const status = props.error || (props.recovered ? '응답이 돌아왔어요 · Esc로 작업 복귀' : props.status === 'failed' ? '요청 실패 · 게임은 로컬에서 실행 중' : '트랙 클릭/Space: 점프 · P: 정지 · Q: 닫기')
+  const status = props.error || (props.recovered ? 'Response is back · Esc: return to work' : props.status === 'failed' ? 'Request failed · game runs locally' : 'Click track/Space: jump · P: pause · Q: close')
   const phase = { ready: 'CLICK + SPACE', running: 'TOKEN RUN', paused: 'PAUSED P', over: 'GAME OVER R' }[game.phase]
   const detail = Math.min(surface.columns, props.columns) < 48
     ? props.error ? 'SAVE!' : props.recovered ? 'BACK:Esc' : props.status === 'failed' ? 'LOCAL' : 'Q:exit'

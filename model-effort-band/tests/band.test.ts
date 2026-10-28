@@ -28,17 +28,17 @@ test('sanitizes unknown model names and limits Unicode code points', () => {
   expect(Array.from(modelView('😀'.repeat(100)).name).length).toBe(80)
 })
 
-for (const [value, meter, description] of [
-  ['low', '▰▱▱▱▱', '빠르게'], ['medium', '▰▰▱▱▱', '보통'],
-  ['high', '▰▰▰▱▱', '깊게'], ['xhigh', '▰▰▰▰▱', '더 깊게'],
-  ['max', '▰▰▰▰▰', '최대로'],
+for (const [value, meter] of [
+  ['low', '▰▱▱▱▱'], ['medium', '▰▰▱▱▱'],
+  ['high', '▰▰▰▱▱'], ['xhigh', '▰▰▰▰▱'],
+  ['max', '▰▰▰▰▰'],
 ]) {
   test(`displays ${value} effort independently of model family`, () => {
     for (const model of ['haiku', 'sonnet', 'opus']) {
       const view = bandView(model, value, 80, 3)
       expect(view.effort.value).toBe(value)
       expect(view.effort.meter).toBe(meter)
-      expect(view.effort.description).toBe(description)
+      expect(Object.keys(view.effort).sort()).toEqual(['color', 'meter', 'value'])
     }
   })
 }
@@ -47,7 +47,6 @@ test('does not infer a level for numeric and future effort values', () => {
   for (const value of [0, 42, 0.5]) {
     expect(effortView(value).value).toBe(String(value))
     expect(effortView(value).meter).toBe('')
-    expect(effortView(value).description).toBe('')
   }
   expect(effortView('future\u001b[31m\nlevel').value).toBe('future level')
   expect(effortView('future').meter).toBe('')
@@ -57,7 +56,6 @@ test('reports invalid or missing effort as unknown instead of a model default', 
   for (const value of [undefined, null, '', ' ', {}, false, -1, NaN, Infinity]) {
     expect(effortView(value).value).toBe('unknown')
     expect(effortView(value).meter).toBe('')
-    expect(effortView(value).description).toBe('확인 전')
   }
 })
 
