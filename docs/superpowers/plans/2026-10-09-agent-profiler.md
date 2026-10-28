@@ -2,42 +2,42 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Claude Code 세션의 시간을 모델 대기 / 툴 / 서브에이전트 / 엔진으로 분해해 실시간으로 보여주고, OTLP로 내보내는 mod를 만든다.
+**Goal:** Build a mod that breaks down the time of a Claude Code session into model wait / tools / subagents / engine, shows it in real time, and exports it via OTLP.
 
-**Architecture:** 얇은 어댑터(`hooks/register.tsx`)가 mods API 이벤트를 받아, 시각을 붙여 순수 TypeScript 상태 기계(`hooks/core/profiler.ts`)에 넘긴다.
-분석(`analyze.ts`), 표현(`report.ts`), 내보내기(`otlp.ts`)는 모두 `Snapshot`을 입력으로 받는 순수 함수다. 그래서 `claude plugin test`로 시각을 주입해 결정적으로 검증할 수 있다.
+**Architecture:** A thin adapter (`hooks/register.tsx`) receives mods API events, attaches timestamps, and passes them to a pure TypeScript state machine (`hooks/core/profiler.ts`).
+Analysis (`analyze.ts`), presentation (`report.ts`) and export (`otlp.ts`) are all pure functions that take a `Snapshot` as input. That is why time can be injected with `claude plugin test` and verified deterministically.
 
-**Tech Stack:** Claude Code mods API(2.1.292), TypeScript(엔진이 직접 로드하므로 빌드 없음), `claude plugin test` / `claude plugin validate`.
+**Tech Stack:** Claude Code mods API (2.1.292), TypeScript (no build, since the engine loads it directly), `claude plugin test` / `claude plugin validate`.
 
 **Spec:** `docs/superpowers/specs/2026-10-09-agent-profiler-design.md`
 
 ## Global Constraints
 
-- 런타임은 Claude Code의 hooks 환경이다. DOM도 Node도 없고, 외부 패키지를 쓸 수 없다. 플러그인 파일 사이의 `import` 선언만 허용되고 `import()`는 쓸 수 없다. 관례로 상대 경로에 `.ts` 확장자를 붙인다.
-- `$` 사용 규칙: 항상 `$.noun.method(...)` 형태로 쓴다. `$`는 최상위 함수에만 넘긴다. `on()`의 이벤트 이름은 문자열 리터럴이어야 한다.
-- 프로파일러는 세션을 절대 방해하지 않는다. 기록 코드는 `safe()`로 감싸고, 이벤트 결과는 바꾸지 않고 그대로 반환한다.
-- 테스트 실행: `cd agent-profiler && CLAUDE_CODE_ENABLE_FUNCTION_HOOKS=1 claude plugin test`. 이 빌드에서는 플래그가 있어야 테스트 러너가 켜진다.
-- 검증: `claude plugin validate agent-profiler`가 `✔`로 끝나야 한다.
-- 리포트·UI 문자열은 영어로 쓴다(공개 mod).
-- 버전 상수 `VERSION = '0.1.0'`은 `plugin.json`의 version과 같아야 한다.
+- The runtime is Claude Code's hooks environment. There is no DOM and no Node, and external packages cannot be used. Only `import` declarations between plugin files are allowed; `import()` cannot be used. By convention, relative paths carry the `.ts` extension.
+- `$` usage rules: always write it in the form `$.noun.method(...)`. Pass `$` only to top-level functions. The event name in `on()` must be a string literal.
+- The profiler never interferes with the session. Wrap recording code in `safe()`, and return event results unchanged.
+- Running tests: `cd agent-profiler && CLAUDE_CODE_ENABLE_FUNCTION_HOOKS=1 claude plugin test`. In this build the test runner is only enabled when the flag is set.
+- Validation: `claude plugin validate agent-profiler` must end with `✔`.
+- Write report and UI strings in English (public mod).
+- The version constant `VERSION = '0.1.0'` must equal the version in `plugin.json`.
 
 ## Review Focus
 
-1. **한 tool_use_id에 PostToolUse가 tool.call 복귀보다 먼저 오거나, 툴이 시작되기 전에 오는 경우.** exec_ms가 사라지면 안 된다. → Task 2 `PostToolUse may arrive before…` 테스트.
-2. **이미 바뀐 turn을 다른 컨텍스트로 옮기는 경우.** turn.start가 서브에이전트 루프에서도 불려 main 컨텍스트를 오염시킬 수 있다. → Task 2 `a subagent turn first announced…` 테스트.
-3. **범위를 나눠 읽는 Read(offset/limit)를 반복 읽기로 오탐하는 경우.** → Task 4 `paged reads are not redundant` 테스트.
-4. **끝나지 않은 span(인터럽트, 실행 중인 Bash).** 리포트 시점의 now로 잘려야 하고, 음수 시간이 나오면 안 된다. → Task 4 `turn scope… open spans are cut at now` 테스트.
-5. **툴 결과 패스스루.** deny나 에러 결과가 프로파일러를 거치면서 바뀌면 안 된다. → Task 7 `tool.call passes the answer through unchanged` 테스트.
+1. **A PostToolUse for one tool_use_id arriving before the tool.call return, or before the tool has started.** exec_ms must not be lost. → Task 2 `PostToolUse may arrive before…` test.
+2. **Moving an already-changed turn to a different context.** turn.start is also called in subagent loops and could contaminate the main context. → Task 2 `a subagent turn first announced…` test.
+3. **Falsely flagging a Read split by range (offset/limit) as a repeated read.** → Task 4 `paged reads are not redundant` test.
+4. **Spans that have not ended (interrupt, a running Bash).** They must be cut at the now of the report time, and negative durations must not appear. → Task 4 `turn scope… open spans are cut at now` test.
+5. **Tool result passthrough.** A deny or error result must not be altered by passing through the profiler. → Task 7 `tool.call passes the answer through unchanged` test.
 
 ---
 
-### Task 1: 스캐폴드, 공통 타입, 결정적 ID
+### Task 1: Scaffold, shared types, deterministic IDs
 
 **Files:**
 - Create: `.claude-plugin/marketplace.json`
 - Create: `agent-profiler/.claude-plugin/plugin.json`
 - Create: `agent-profiler/hooks/hooks.json`
-- Create: `agent-profiler/hooks/register.tsx` (임시: 빈 register)
+- Create: `agent-profiler/hooks/register.tsx` (temporary: empty register)
 - Create: `agent-profiler/hooks/core/types.ts`
 - Create: `agent-profiler/hooks/core/format.ts`
 - Create: `agent-profiler/hooks/core/ids.ts`
@@ -48,7 +48,7 @@
 - Produces: `fmtMs(ms)`, `pct(part, whole)`, `clip(text, n)`, `bar(share, width?)`, `fmtCount(n)`
 - Produces (types.ts): `Usage`, `ToolInputSummary`, `TurnRec`, `StepRec`, `ToolRec`, `AgentRec`, `Snapshot`, `Outcome`
 
-- [ ] **Step 1: 매니페스트와 마켓플레이스 작성**
+- [ ] **Step 1: Write the manifest and marketplace**
 
 `.claude-plugin/marketplace.json`
 ```json
@@ -94,14 +94,14 @@
 { "description": "Agent Profiler hooks module", "modules": ["./register.tsx"] }
 ```
 
-`agent-profiler/hooks/register.tsx` (Task 7에서 교체)
+`agent-profiler/hooks/register.tsx` (replaced in Task 7)
 ```tsx
 import type { Register } from 'claude-code'
 
 export const register: Register = () => {}
 ```
 
-- [ ] **Step 2: 공통 타입과 포맷 헬퍼 작성**
+- [ ] **Step 2: Write the shared types and format helpers**
 
 `agent-profiler/hooks/core/types.ts`
 ```ts
@@ -203,7 +203,7 @@ export function fmtCount(n: number): string {
 }
 ```
 
-- [ ] **Step 3: 실패하는 ID 테스트 작성**
+- [ ] **Step 3: Write the failing ID test**
 
 `agent-profiler/tests/ids.test.ts`
 ```ts
@@ -228,12 +228,12 @@ test('trace id is the session uuid without dashes, or a hash otherwise', () => {
 })
 ```
 
-- [ ] **Step 4: 실패 확인**
+- [ ] **Step 4: Confirm the failure**
 
 Run: `cd agent-profiler && CLAUDE_CODE_ENABLE_FUNCTION_HOOKS=1 claude plugin test`
-Expected: FAIL. `../hooks/core/ids.ts`를 찾을 수 없다.
+Expected: FAIL. `../hooks/core/ids.ts` cannot be found.
 
-- [ ] **Step 5: ids.ts 구현**
+- [ ] **Step 5: Implement ids.ts**
 
 `agent-profiler/hooks/core/ids.ts`
 ```ts
@@ -263,10 +263,10 @@ export function traceIdFromSession(sessionId: string): string {
 }
 ```
 
-- [ ] **Step 6: 통과 확인과 검증**
+- [ ] **Step 6: Confirm it passes and validate**
 
 Run: `cd agent-profiler && CLAUDE_CODE_ENABLE_FUNCTION_HOOKS=1 claude plugin test && claude plugin validate .`
-Expected: 3 pass. Validate는 `✔`로 끝난다.
+Expected: 3 pass. Validate ends with `✔`.
 
 - [ ] **Step 7: Commit**
 
@@ -277,14 +277,14 @@ git commit -m "feat(agent-profiler): scaffold mod, shared types and deterministi
 
 ---
 
-### Task 2: Profiler 상태 기계
+### Task 2: Profiler state machine
 
 **Files:**
 - Create: `agent-profiler/hooks/core/profiler.ts`
 - Test: `agent-profiler/tests/profiler.test.ts`
 
 **Interfaces:**
-- Consumes: Task 1의 `types.ts`
+- Consumes: `types.ts` from Task 1
 - Produces:
   - `MAIN = 'main'`, `isAgentTool(tool: string): boolean`, `toolLabel(tool: ToolRec): string`
   - `summarizeInput(tool: string, input: Record<string, unknown>): ToolInputSummary`
@@ -297,7 +297,7 @@ git commit -m "feat(agent-profiler): scaffold mod, shared types and deterministi
     `toolEnd(t, id, outcome)`, `subagentStart(t, agentId, agentType)`, `subagentStop(t, agentId)`,
     `running(now): RunningItem[]`, `snapshot(now): Snapshot`, `readonly sessionId`
 
-- [ ] **Step 1: 실패하는 테스트 작성**
+- [ ] **Step 1: Write the failing test**
 
 `agent-profiler/tests/profiler.test.ts`
 ```ts
@@ -408,12 +408,12 @@ test('summarizeInput and toolOutcome read the engine shapes', () => {
 })
 ```
 
-- [ ] **Step 2: 실패 확인**
+- [ ] **Step 2: Confirm the failure**
 
 Run: `cd agent-profiler && CLAUDE_CODE_ENABLE_FUNCTION_HOOKS=1 claude plugin test`
-Expected: FAIL. `profiler.ts`를 찾을 수 없다.
+Expected: FAIL. `profiler.ts` cannot be found.
 
-- [ ] **Step 3: profiler.ts 구현**
+- [ ] **Step 3: Implement profiler.ts**
 
 `agent-profiler/hooks/core/profiler.ts`
 ```ts
@@ -677,10 +677,10 @@ export class Profiler {
 }
 ```
 
-- [ ] **Step 4: 통과 확인**
+- [ ] **Step 4: Confirm it passes**
 
 Run: `cd agent-profiler && CLAUDE_CODE_ENABLE_FUNCTION_HOOKS=1 claude plugin test`
-Expected: 이전 테스트 포함 모두 pass.
+Expected: all pass, including the earlier tests.
 
 - [ ] **Step 5: Commit**
 
@@ -691,7 +691,7 @@ git commit -m "feat(agent-profiler): event state machine for turns, requests, to
 
 ---
 
-### Task 3: Bash 명령 분류 (👤 사용자 기여 지점)
+### Task 3: Bash command classification (👤 user contribution point)
 
 **Files:**
 - Create: `agent-profiler/hooks/core/classify.ts`
@@ -700,10 +700,10 @@ git commit -m "feat(agent-profiler): event state machine for turns, requests, to
 **Interfaces:**
 - Produces: `type BashCategory = 'test' | 'build' | 'install' | 'git' | 'search' | 'other'`, `classifyCommand(command: string): BashCategory`
 
-`cd web && npm test`처럼 여러 명령을 이은 경우의 정책은 사용자가 정한다(실행 단계에서 TODO로 남겨 요청).
-아래는 참조 구현이다. 세그먼트별로 분류한 뒤 가장 "비싼" 범주를 고르며, 우선순위는 test > build > install > git > search > other.
+The policy for chained commands such as `cd web && npm test` is decided by the user (leave it as a TODO at the execution stage and ask).
+Below is a reference implementation. It classifies each segment and then picks the most "expensive" category, with priority test > build > install > git > search > other.
 
-- [ ] **Step 1: 실패하는 테스트 작성**
+- [ ] **Step 1: Write the failing test**
 
 `agent-profiler/tests/classify.test.ts`
 ```ts
@@ -736,12 +736,12 @@ test('compound commands take the most expensive segment', () => {
 })
 ```
 
-- [ ] **Step 2: 실패 확인**
+- [ ] **Step 2: Confirm the failure**
 
 Run: `cd agent-profiler && CLAUDE_CODE_ENABLE_FUNCTION_HOOKS=1 claude plugin test`
-Expected: FAIL. `classify.ts`를 찾을 수 없다.
+Expected: FAIL. `classify.ts` cannot be found.
 
-- [ ] **Step 3: classify.ts 구현**
+- [ ] **Step 3: Implement classify.ts**
 
 `agent-profiler/hooks/core/classify.ts`
 ```ts
@@ -772,10 +772,10 @@ export function classifyCommand(command: string): BashCategory {
 }
 ```
 
-- [ ] **Step 4: 통과 확인**
+- [ ] **Step 4: Confirm it passes**
 
 Run: `cd agent-profiler && CLAUDE_CODE_ENABLE_FUNCTION_HOOKS=1 claude plugin test`
-Expected: 모두 pass.
+Expected: all pass.
 
 - [ ] **Step 5: Commit**
 
@@ -799,11 +799,11 @@ git commit -m "feat(agent-profiler): classify Bash commands into test/build/inst
   - `type Interval = [number, number]`, `type Category = 'model' | 'subagent' | 'tool' | 'engine'`, `type Scope = 'session' | 'turn'`
   - `unionLength(intervals: Interval[]): number`
   - `attribute(window: Interval, tagged: { cat: Category; iv: Interval }[]): Record<Category, number>`
-  - `type Summary` (아래 코드 참조)
+  - `type Summary` (see the code below)
   - `summarize(s: Snapshot, scope?: Scope): Summary`
   - fixtures: `ok`, `session(): Profiler`, `withSubagent(): Profiler`
 
-- [ ] **Step 1: 공유 fixture 작성**
+- [ ] **Step 1: Write the shared fixture**
 
 `agent-profiler/tests/fixtures.ts`
 ```ts
@@ -858,7 +858,7 @@ export function withSubagent(): Profiler {
 }
 ```
 
-- [ ] **Step 2: 실패하는 테스트 작성**
+- [ ] **Step 2: Write the failing test**
 
 `agent-profiler/tests/analyze.test.ts`
 ```ts
@@ -934,12 +934,12 @@ test('turn scope follows subagents launched in that turn', () => {
 })
 ```
 
-- [ ] **Step 3: 실패 확인**
+- [ ] **Step 3: Confirm the failure**
 
 Run: `cd agent-profiler && CLAUDE_CODE_ENABLE_FUNCTION_HOOKS=1 claude plugin test`
-Expected: FAIL. `analyze.ts`를 찾을 수 없다.
+Expected: FAIL. `analyze.ts` cannot be found.
 
-- [ ] **Step 4: analyze.ts 구현**
+- [ ] **Step 4: Implement analyze.ts**
 
 `agent-profiler/hooks/core/analyze.ts`
 ```ts
@@ -1228,10 +1228,10 @@ function buildFindings(sum: Summary): string[] {
 }
 ```
 
-- [ ] **Step 5: 통과 확인**
+- [ ] **Step 5: Confirm it passes**
 
 Run: `cd agent-profiler && CLAUDE_CODE_ENABLE_FUNCTION_HOOKS=1 claude plugin test`
-Expected: 모두 pass.
+Expected: all pass.
 
 - [ ] **Step 6: Commit**
 
@@ -1242,18 +1242,18 @@ git commit -m "feat(agent-profiler): exclusive time attribution, tool/model stat
 
 ---
 
-### Task 5: 리포트, 상태줄, Pane 행
+### Task 5: Report, status line, Pane rows
 
 **Files:**
 - Create: `agent-profiler/hooks/core/report.ts`
 - Test: `agent-profiler/tests/report.test.ts`
 
 **Interfaces:**
-- Consumes: `Summary`, `Category` (Task 4), `RunningItem` (Task 2), format 헬퍼 (Task 1)
+- Consumes: `Summary`, `Category` (Task 4), `RunningItem` (Task 2), format helpers (Task 1)
 - Produces: `renderReport(sum: Summary): string`, `statusLine(sum: Summary, running: RunningItem[]): string`,
   `type PaneLine = { text: string; bold?: boolean; dim?: boolean }`, `paneLines(sum, running, width: number): PaneLine[]`
 
-- [ ] **Step 1: 실패하는 테스트 작성**
+- [ ] **Step 1: Write the failing test**
 
 `agent-profiler/tests/report.test.ts`
 ```ts
@@ -1291,12 +1291,12 @@ test('pane lines start with the total and stay within the width', () => {
 })
 ```
 
-- [ ] **Step 2: 실패 확인**
+- [ ] **Step 2: Confirm the failure**
 
 Run: `cd agent-profiler && CLAUDE_CODE_ENABLE_FUNCTION_HOOKS=1 claude plugin test`
-Expected: FAIL. `report.ts`를 찾을 수 없다.
+Expected: FAIL. `report.ts` cannot be found.
 
-- [ ] **Step 3: report.ts 구현**
+- [ ] **Step 3: Implement report.ts**
 
 `agent-profiler/hooks/core/report.ts`
 ```ts
@@ -1403,10 +1403,10 @@ export function paneLines(sum: Summary, running: RunningItem[], width: number): 
 }
 ```
 
-- [ ] **Step 4: 통과 확인**
+- [ ] **Step 4: Confirm it passes**
 
 Run: `cd agent-profiler && CLAUDE_CODE_ENABLE_FUNCTION_HOOKS=1 claude plugin test`
-Expected: 모두 pass.
+Expected: all pass.
 
 - [ ] **Step 5: Commit**
 
@@ -1427,7 +1427,7 @@ git commit -m "feat(agent-profiler): text report, status line and pane rows"
 - Consumes: `spanId`, `traceIdFromSession` (Task 1), `MAIN`, `isAgentTool` (Task 2), `classifyCommand` (Task 3)
 - Produces: `toOtlp(s: Snapshot, version: string): OtlpRequest`, `nanos(ms: number): string`, types `OtlpSpan`, `OtlpRequest`
 
-- [ ] **Step 1: 실패하는 테스트 작성**
+- [ ] **Step 1: Write the failing test**
 
 `agent-profiler/tests/otlp.test.ts`
 ```ts
@@ -1477,12 +1477,12 @@ test('a subagent hangs under its Agent tool, its work under the subagent', () =>
 })
 ```
 
-- [ ] **Step 2: 실패 확인**
+- [ ] **Step 2: Confirm the failure**
 
 Run: `cd agent-profiler && CLAUDE_CODE_ENABLE_FUNCTION_HOOKS=1 claude plugin test`
-Expected: FAIL. `otlp.ts`를 찾을 수 없다.
+Expected: FAIL. `otlp.ts` cannot be found.
 
-- [ ] **Step 3: otlp.ts 구현**
+- [ ] **Step 3: Implement otlp.ts**
 
 `agent-profiler/hooks/core/otlp.ts`
 ```ts
@@ -1663,10 +1663,10 @@ export function toOtlp(s: Snapshot, version: string): OtlpRequest {
 }
 ```
 
-- [ ] **Step 4: 통과 확인**
+- [ ] **Step 4: Confirm it passes**
 
 Run: `cd agent-profiler && CLAUDE_CODE_ENABLE_FUNCTION_HOOKS=1 claude plugin test`
-Expected: 모두 pass.
+Expected: all pass.
 
 - [ ] **Step 5: Commit**
 
@@ -1677,17 +1677,17 @@ git commit -m "feat(agent-profiler): OTLP/JSON export with deterministic span tr
 
 ---
 
-### Task 7: 어댑터 (register.tsx): 이벤트, 명령, Pane, 상태줄, 자동 저장
+### Task 7: Adapter (register.tsx): events, commands, Pane, status line, auto-save
 
 **Files:**
-- Modify: `agent-profiler/hooks/register.tsx` (전체 교체)
+- Modify: `agent-profiler/hooks/register.tsx` (replace entirely)
 - Test: `agent-profiler/tests/adapter.test.ts`
 
 **Interfaces:**
-- Consumes: 위 모든 core 모듈
-- Produces: 명령 `/profile [turn]`, `/profile-pane`, `/profile-export`. Pane id `agent-profiler`. 파일 `<outputDir>/<sessionId>.otlp.json`
+- Consumes: all the core modules above
+- Produces: commands `/profile [turn]`, `/profile-pane`, `/profile-export`. Pane id `agent-profiler`. File `<outputDir>/<sessionId>.otlp.json`
 
-- [ ] **Step 1: 실패하는 통합 테스트 작성**
+- [ ] **Step 1: Write the failing integration test**
 
 `agent-profiler/tests/adapter.test.ts`
 ```ts
@@ -1727,14 +1727,14 @@ test('turn.step chunks reach the caller unchanged', async ($, on) => {
 })
 ```
 
-`$.turn.start` / `$.turn.complete`를 테스트 kit에서 호출할 수 없으면(구현 시 확인), 첫 테스트에서 그 두 줄과 `'1 turn(s)'` 단언을 지우고 `'Bash npm test'` 단언만 남긴다. 턴 경계는 Task 2·4 단위 테스트가 이미 검증한다.
+If `$.turn.start` / `$.turn.complete` cannot be called from the test kit (to be checked during implementation), delete those two lines and the `'1 turn(s)'` assertion from the first test and keep only the `'Bash npm test'` assertion. Turn boundaries are already verified by the Task 2 and Task 4 unit tests.
 
-- [ ] **Step 2: 실패 확인**
+- [ ] **Step 2: Confirm the failure**
 
 Run: `cd agent-profiler && CLAUDE_CODE_ENABLE_FUNCTION_HOOKS=1 claude plugin test`
-Expected: 첫 테스트 FAIL. `/profile` 명령에 답하는 훅이 없다.
+Expected: the first test FAILS. There is no hook that answers the `/profile` command.
 
-- [ ] **Step 3: register.tsx 구현**
+- [ ] **Step 3: Implement register.tsx**
 
 `agent-profiler/hooks/register.tsx`
 ```tsx
@@ -1939,14 +1939,14 @@ export const register: Register = (on, options) => {
 }
 ```
 
-- [ ] **Step 4: 통과 확인, validate**
+- [ ] **Step 4: Confirm it passes, validate**
 
 Run: `cd agent-profiler && CLAUDE_CODE_ENABLE_FUNCTION_HOOKS=1 claude plugin test && claude plugin validate .`
-Expected: 모두 pass. validate의 `hooks:` 줄에 다음이 보인다.
+Expected: all pass. The following appear on the `hooks:` line of validate.
 session.start, turn.start, turn.complete, turn.step, tool.call, tool.check, classic.PostToolUse, classic.PostToolUseFailure,
 classic.SubagentStart, classic.SubagentStop, session.end, command.run{…} ×3, ui.render{component=Pane,requestId=agent-profiler}.
-`calls:`에는 $.session.id, $.command.register, $.clock.every, $.clock.after, $.ui.status, $.ui.invalidate, $.ui.open, $.ui.resolve, $.env.get, $.fs.write, $.http.fetch가 보인다.
-타입 오류가 나면 `.claude-plugin/types/claude-code/index.d.ts`에서 해당 이름을 grep해 맞춘다.
+The `calls:` line shows $.session.id, $.command.register, $.clock.every, $.clock.after, $.ui.status, $.ui.invalidate, $.ui.open, $.ui.resolve, $.env.get, $.fs.write, $.http.fetch.
+If a type error occurs, grep for the name in `.claude-plugin/types/claude-code/index.d.ts` and match it.
 
 - [ ] **Step 5: Commit**
 
@@ -1957,38 +1957,38 @@ git commit -m "feat(agent-profiler): wire engine events, /profile commands, live
 
 ---
 
-### Task 8: 실제 세션 E2E, 문서, Jaeger 예제
+### Task 8: Real-session E2E, docs, Jaeger example
 
 **Files:**
 - Create: `agent-profiler/README.md`
 - Create: `agent-profiler/examples/jaeger/docker-compose.yml`
-- Modify: `README.md` (저장소 루트: mod 목록)
+- Modify: `README.md` (repository root: mod list)
 
-- [ ] **Step 1: 이 세션에 hot reload로 연결**
+- [ ] **Step 1: Connect it to this session via hot reload**
 
 ```bash
 mkdir -p ~/.claude/dev-mods/<session-id>
 ln -s "$PWD/agent-profiler" ~/.claude/dev-mods/<session-id>/agent-profiler
 ```
-"Enable hot reloading for this session?"에 사용자가 `Enable for this session`을 고르면 턴이 끝날 때 로드된다.
-그 뒤 `/profile`을 실행해 실제 출력을 확인한다. 아니면 터미널에서 `claude --plugin-dir ./agent-profiler`로 확인한다.
+When the user picks `Enable for this session` at "Enable hot reloading for this session?", it is loaded when the turn ends.
+Then run `/profile` and check the real output. Otherwise, check from a terminal with `claude --plugin-dir ./agent-profiler`.
 
-- [ ] **Step 2: 실세션 프로브로 결합 지점 검증**
+- [ ] **Step 2: Verify the integration points with a real-session probe**
 
 ```bash
 claude -p "Read README.md, run 'sleep 1' with Bash, then spawn a general-purpose subagent that lists the files here. Then finish." \
   --plugin-dir ./agent-profiler --model claude-haiku-4-5-20251001 --allowedTools "Read,Bash,Agent" < /dev/null
 ls -la ~/.claude/agent-profiler/
 ```
-Expected: `<sessionId>.otlp.json`이 생긴다. 파일을 python으로 열어 확인할 것:
-(a) `chat` span이 1개 이상이고 `model.ttft`가 있다.
-(b) `execute_tool Bash`에 `exec_ms`가 있다.
-(c) `invoke_agent` span의 부모가 `execute_tool Agent`이다.
-(d) 서브에이전트의 `chat` span 부모가 `invoke_agent`이다.
-(e) turn.start가 서브에이전트에도 불리는지 본다. `turn` span 수와 main 턴 수를 비교한다.
-어긋나면 superpowers:systematic-debugging으로 원인을 찾는다.
+Expected: `<sessionId>.otlp.json` is created. Open the file with python and check:
+(a) There is at least one `chat` span and it has `model.ttft`.
+(b) `execute_tool Bash` has `exec_ms`.
+(c) The parent of the `invoke_agent` span is `execute_tool Agent`.
+(d) The parent of the subagent's `chat` span is `invoke_agent`.
+(e) See whether turn.start is also called for the subagent. Compare the number of `turn` spans with the number of main turns.
+If they do not match, find the cause with superpowers:systematic-debugging.
 
-- [ ] **Step 3: Jaeger 예제 작성**
+- [ ] **Step 3: Write the Jaeger example**
 
 `agent-profiler/examples/jaeger/docker-compose.yml`
 ```yaml
@@ -2001,28 +2001,28 @@ services:
       - "16686:16686" # UI
       - "4318:4318"   # OTLP/HTTP
 ```
-Docker가 있으면 `docker compose -f agent-profiler/examples/jaeger/docker-compose.yml up -d`를 띄운다.
-그다음 `curl -sS -X POST -H 'content-type: application/json' --data @~/.claude/agent-profiler/<id>.otlp.json http://localhost:4318/v1/traces`로 보내고,
-`curl -s 'http://localhost:16686/api/traces/<traceId>'`로 span 수를 확인한다. Docker가 없으면 이 단계를 건너뛰고 그렇다고 보고한다.
+If Docker is available, bring up `docker compose -f agent-profiler/examples/jaeger/docker-compose.yml up -d`.
+Then send the file with `curl -sS -X POST -H 'content-type: application/json' --data @~/.claude/agent-profiler/<id>.otlp.json http://localhost:4318/v1/traces`,
+and check the span count with `curl -s 'http://localhost:16686/api/traces/<traceId>'`. If Docker is not available, skip this step and report that.
 
-- [ ] **Step 4: README 작성**
+- [ ] **Step 4: Write the README**
 
-`agent-profiler/README.md`에 넣을 섹션:
-- 무엇을 보여주는가: 시간 범주 표, 관찰 가능성 등급 표(스펙 §2를 그대로 옮긴다).
-- 설치: `/plugin install agent-profiler --marketplace YeonwooSung/my-claude-code-mods`. 개발 중에는 `claude --plugin-dir ./agent-profiler`.
-- 명령: `/profile`, `/profile turn`, `/profile-pane`, `/profile-export`.
-- 설정: `otlpEndpoint`, `outputDir`(`/plugin` 설정 메뉴 또는 settings `pluginConfigs`).
-- Jaeger / Tempo 연동: compose 예제, curl로 파일 전송, Tempo는 OTLP/HTTP 4318 엔드포인트를 그대로 쓴다.
-- 환경별 동작 표(스펙 §8).
-- 한계: 모델 내부 시간은 분해할 수 없다. Bash로 수정한 파일은 반복 읽기 판정에 보이지 않는다. hot reload하면 메모리 상태가 초기화된다. 검증 버전은 Claude Code 2.1.292이다.
-- 테스트: `CLAUDE_CODE_ENABLE_FUNCTION_HOOKS=1 claude plugin test`.
+Sections to put in `agent-profiler/README.md`:
+- What it shows: the time category table and the observability grade table (copy spec §2 as is).
+- Install: `/plugin install agent-profiler --marketplace YeonwooSung/my-claude-code-mods`. During development, `claude --plugin-dir ./agent-profiler`.
+- Commands: `/profile`, `/profile turn`, `/profile-pane`, `/profile-export`.
+- Settings: `otlpEndpoint`, `outputDir` (the `/plugin` settings menu or settings `pluginConfigs`).
+- Jaeger / Tempo integration: the compose example, sending the file with curl; Tempo uses the OTLP/HTTP 4318 endpoint as is.
+- Behavior-by-environment table (spec §8).
+- Limitations: time inside the model cannot be broken down. Files modified through Bash are not visible to repeated-read detection. A hot reload resets the in-memory state. The verified version is Claude Code 2.1.292.
+- Tests: `CLAUDE_CODE_ENABLE_FUNCTION_HOOKS=1 claude plugin test`.
 
-루트 `README.md`에 mod 목록 한 줄을 추가한다.
+Add one line to the mod list in the root `README.md`.
 
-- [ ] **Step 5: 최종 검증과 Commit**
+- [ ] **Step 5: Final verification and Commit**
 
 Run: `cd agent-profiler && CLAUDE_CODE_ENABLE_FUNCTION_HOOKS=1 claude plugin test && claude plugin validate . && cd .. && claude plugin validate .`
-Expected: 모두 pass. 마켓플레이스 validate도 `✔`.
+Expected: all pass. The marketplace validate also ends with `✔`.
 
 ```bash
 git add README.md agent-profiler/README.md agent-profiler/examples

@@ -1,158 +1,158 @@
-# Model Effort Band — 설계 스펙
+# Model Effort Band — Design Spec
 
-- 작성일: 2026-10-13 (Asia/Seoul)
-- 상태: 사용자 승인 후 구현·자동 검증·독립 코드 리뷰 완료.
-- 동작 개정: 2026-10-18, 툴 호출·대기·새 턴에서 마지막 effort 유지 (사용자 요청).
-- 모드명 / 위치: `model-effort-band` / `model-effort-band/`
-- 목적: Claude Code 입력창 위에서 현재 모델과 메인 대화의 effort를 한눈에 확인한다.
-- 디자인 근거: 사용자가 첨부한 모델별 녹색·파랑·보라 테두리 띠. 이미지의 `5.5`는 예시이며 실제 모델의 버전을 표시한다.
+- Written: 2026-10-13 (Asia/Seoul)
+- Status: Implementation, automated verification and independent code review completed after user approval.
+- Behavior revision: 2026-10-18, keep the last effort across tool calls, waiting and new turns (user request).
+- Mod name / location: `model-effort-band` / `model-effort-band/`
+- Purpose: Show the current model and the main conversation's effort at a glance above the Claude Code input box.
+- Design basis: The green, blue and purple bordered per-model bands the user attached. The `5.5` in the image is an example; the actual model's version is displayed.
 
-## 1. 요구 해석과 선택
+## 1. Interpretation of the Request and Choice
 
-이미지의 세 줄은 모델별 스타일 예시로 해석한다. 실제 화면에는 현재 모델의 띠 하나만 표시한다. 모델이나 effort를 변경하는 컨트롤은 추가하지 않는다.
+The three lines in the image are interpreted as per-model style examples. The actual screen shows only one band, for the current model. No controls for changing the model or effort are added.
 
-대안 비교:
+Comparison of alternatives:
 
-| 방식 | 장점 | 비용 |
+| Approach | Advantage | Cost |
 |---|---|---|
-| 입력창 위 `AbovePrompt` 띠 (선택) | 참조 이미지의 배치와 테두리를 재현하고 입력 전에도 보인다 | 터미널에서 테두리가 두 행을 추가로 차지한다 |
-| 기존 상태줄 | 공간 소비가 적다 | 테두리·우측 배지를 구현하기 어렵고 다른 모드의 상태줄과 자리를 공유한다 |
-| 별도 Pane | 자세한 정보를 담기 쉽다 | 단순 상태 확인에 패널을 여는 동작이 필요하다 |
+| `AbovePrompt` band above the input box (chosen) | Reproduces the layout and border of the reference image and is visible even before typing | The border takes up two extra rows in the terminal |
+| Existing status line | Uses little space | Hard to implement the border and right-hand badge, and it shares its place with other mods' status lines |
+| Separate Pane | Easy to hold detailed information | Opening a panel is needed just to check simple status |
 
-## 2. 표시 계약
+## 2. Display Contract
 
-넓은 화면의 형식:
+Format on a wide screen:
 
 ```text
 ╭──────────────────────────────────────────────────────────────╮
-│ Sonnet 4.6 │ effort ▰▰▱▱▱ medium · 보통              Sonnet │
+│ Sonnet 4.6 │ effort ▰▰▱▱▱ medium · normal            Sonnet │
 ╰──────────────────────────────────────────────────────────────╯
 ```
 
-실제 칸 수는 엔진이 제공하는 `bodyColumns`를 기준으로 계산한다. 위 도식의 간격은 설명용이다.
+The actual number of cells is calculated from the `bodyColumns` the engine provides. The spacing in the diagram above is for illustration.
 
-- Haiku: 녹색 `#8ACFA7`, 어두운 배경 `#17251F`.
-- Sonnet: 파랑 `#8BBEF4`, 어두운 배경 `#192333`.
-- Opus: 보라 `#B99CE5`, 어두운 배경 `#241C32`.
-- 알 수 없는 모델: 회색 `#B5BAC4`, 어두운 배경 `#202329`, 배지 `Model`.
-- `low` → `▰▱▱▱▱`, `빠르게`, 녹색.
-- `medium` → `▰▰▱▱▱`, `보통`, 파랑.
-- `high` → `▰▰▰▱▱`, `깊게`, 노랑 `#E4CC75`.
-- `xhigh` → `▰▰▰▰▱`, `더 깊게`, 노랑.
-- `max` → `▰▰▰▰▰`, `최대로`, 노랑.
-- 숫자 effort: 유한한 0 이상의 숫자 그대로 표시하고 게이지·수준 설명은 생략한다. 숫자의 의미를 임의로 등급화하지 않는다.
-- 표시할 관측값이 없거나 유효하지 않은 effort: `unknown · 확인 전`, 게이지 없음.
-- 알 수 없는 문자열 effort: 안전하게 정리한 원래 문자열, 게이지·수준 설명 없음.
-- effort 설명은 수준을 이해하기 위한 문구이며 응답 속도나 품질에 대한 측정·보장이 아니다.
-- 모든 모델 × 모든 effort 조합을 허용한다. 모델 종류에서 effort를 추정하지 않는다.
+- Haiku: green `#8ACFA7`, dark background `#17251F`.
+- Sonnet: blue `#8BBEF4`, dark background `#192333`.
+- Opus: purple `#B99CE5`, dark background `#241C32`.
+- Unknown model: gray `#B5BAC4`, dark background `#202329`, badge `Model`.
+- `low` → `▰▱▱▱▱`, `quickly`, green.
+- `medium` → `▰▰▱▱▱`, `normal`, blue.
+- `high` → `▰▰▰▱▱`, `deep`, yellow `#E4CC75`.
+- `xhigh` → `▰▰▰▰▱`, `deeper`, yellow.
+- `max` → `▰▰▰▰▰`, `maximum`, yellow.
+- Numeric effort: show a finite number of 0 or more as it is, and omit the gauge and the level description. Do not arbitrarily grade the meaning of numbers.
+- Effort with no observed value to show, or an invalid one: `unknown · not yet confirmed`, no gauge.
+- Unknown string effort: the original string, safely sanitized, with no gauge or level description.
+- The effort description is wording to help understand the level; it is not a measurement or guarantee of response speed or quality.
+- Every model × every effort combination is allowed. Effort is not inferred from the kind of model.
 
-### 모델명 정규화
+### Model Name Normalization
 
 - `claude-sonnet-4-6`, `claude-opus-4-6`, `claude-haiku-4-5-20251001` → `Sonnet 4.6`, `Opus 4.6`, `Haiku 4.5`.
-- `claude-3-5-sonnet-20241022` 같은 이전 이름도 `Sonnet 3.5`로 표시한다.
-- 별칭 `haiku`, `sonnet`, `opus`는 버전을 붙이지 않고 가족명만 표시한다.
-- Bedrock 지역 접두사, `anthropic.` 접두사, 날짜와 `:vN` 접미사가 있는 알려진 Claude ID도 가족·버전을 추출한다.
-- 임의 문자열 중간에 `opus`가 있다는 이유로 Claude 모델로 판정하지 않는다. 알려진 Claude ID 형식과 별칭에만 가족 색을 적용한다.
-- 알 수 없는 모델은 제어 문자 제거, 공백 정리 후 최대 80 Unicode 코드 포인트까지만 표시한다. 빈 값은 `Unknown model`이다.
-- 모델 별칭을 특정 최신 버전으로 변환하는 고정 표나 원격 조회는 사용하지 않는다.
+- Older names such as `claude-3-5-sonnet-20241022` are also displayed as `Sonnet 3.5`.
+- The aliases `haiku`, `sonnet`, `opus` show only the family name, with no version attached.
+- Known Claude IDs with a Bedrock region prefix, an `anthropic.` prefix, a date and a `:vN` suffix also have the family and version extracted.
+- A string is not judged to be a Claude model merely because `opus` appears in the middle of it. The family color is applied only to known Claude ID formats and aliases.
+- An unknown model is displayed after removing control characters and normalizing whitespace, up to at most 80 Unicode code points. An empty value is `Unknown model`.
+- No fixed table or remote lookup that converts a model alias to a specific latest version is used.
 
-### 공간과 접근성
+### Space and Accessibility
 
-- `bodyColumns >= 60`, `maxRows >= 3`: 둥근 테두리, 모델명, effort 게이지·영문 수준·한국어 설명, 오른쪽 가족 배지.
-- `30 <= bodyColumns < 60`, `maxRows >= 3`: 테두리, 모델명과 `effort <값>`만 표시한다.
-- `bodyColumns < 30` 또는 `maxRows < 3`: 한 줄의 `모델명 | effort <값>`으로 축약한다. 공간이 없으면 띠를 생략한다.
-- 텍스트는 말줄임 처리하고 줄바꿈하지 않는다. 출력 폭이 영역 폭을 넘지 않는다.
-- 한글은 두 셀, ASCII·게이지는 한 셀로 계산한다. 알려진 모델명의 배치는 정확히 계산하고 임의 Unicode 이름은 renderer의 말줄임을 최종 경계로 사용한다.
-- 색 없이도 모델명·effort 문자열로 의미를 읽을 수 있다.
-- `hasSurvey === true`이면 띠를 그리지 않고 `next(e)`를 그대로 반환한다.
-- 다른 `AbovePrompt` 모드의 `next(e)` 결과를 보존하고 그 뒤에 자신의 띠를 추가한다. 다른 모드와 전체 공간을 조율하는 기능은 엔진에 맡긴다.
+- `bodyColumns >= 60`, `maxRows >= 3`: rounded border, model name, effort gauge, English level and Korean description, and the family badge on the right.
+- `30 <= bodyColumns < 60`, `maxRows >= 3`: border, with only the model name and `effort <value>` shown.
+- `bodyColumns < 30` or `maxRows < 3`: abbreviated to a single line `model name | effort <value>`. If there is no space, the band is omitted.
+- Text is truncated with an ellipsis and does not wrap. The output width does not exceed the area width.
+- Hangul is counted as two cells, ASCII and the gauge as one cell. The layout of known model names is calculated exactly, and for arbitrary Unicode names the renderer's ellipsis is used as the final boundary.
+- The meaning can be read from the model name and effort string even without color.
+- If `hasSurvey === true`, the band is not drawn and `next(e)` is returned as it is.
+- The result of `next(e)` from other `AbovePrompt` mods is preserved and this mod's own band is added after it. Coordinating the overall space with other mods is left to the engine.
 
-## 3. 데이터의 의미와 수명
+## 3. Meaning and Lifetime of the Data
 
-현재 선택 모델은 `$.session.model()`로 읽는다. 첫 요청 전에도 모델명은 표시할 수 있다. 이 호출이 실패하면 해당 렌더는 `Unknown model`과 `unknown` effort를 표시하며 이전 모델을 재사용하지 않는다.
+The currently selected model is read with `$.session.model()`. The model name can be displayed even before the first request. If this call fails, that render shows `Unknown model` and `unknown` effort and does not reuse the previous model.
 
-effort의 신뢰 가능한 입력은 메인 대화의 `turn.step`에서 받은 `e.effort`이다. 모드가 등록된 순서에서 관측한 요청 값이며, 뒤에 실행되는 다른 모드의 재작성까지 확인했다고 주장하지 않는다. 설정값을 읽어 기본 effort를 추정하지 않는다.
+The trustworthy input for effort is `e.effort` received from the main conversation's `turn.step`. It is the request value observed at this mod's registered position in the order, and it does not claim to have confirmed rewrites by other mods that run later. The default effort is not inferred by reading the settings values.
 
-상태는 register 호출마다 생성한 하나의 `BandState` 인스턴스에 저장한다:
+State is stored in a single `BandState` instance created for each register call:
 
-- `observeStep({ model, effort, agentId })`: `agentId`가 없을 때만 관측한다. 같은 모델에서 effort가 생략되면 기존 값을 유지하며, 새 값(숫자 0 포함)이 전달되면 갱신한다. 다른 모델의 요청은 effort가 생략되더라도 관측 모델·effort를 교체해 이전 모델의 값이 넘어가지 않게 한다.
-- `reset()`: 관측 모델·effort를 모두 비운다.
-- `snapshot(selectedModel)`: 현재 선택 모델과 관측 모델의 문자열이 같은 경우에만 관측 effort를 반환한다. 모델 별칭과 resolved ID가 다르면 안전하게 `unknown`으로 표시한다.
-- `session.start`, `session.end`에서 reset한다. 메인 `turn.start`는 repaint만 수행해 다음 턴·툴 호출·대기 화면에서도 마지막 관측값을 유지한다. `/clear`, resume, reload 뒤에도 이전 상태가 남지 않는다.
-- `classic.PostModelSwitch`에서 reset하고 invalidate한다.
-- 성공한 `config.set` 뒤에 reset하고 invalidate한다. 설정 키 목록에 의존하지 않기 위해 모든 성공한 설정 변경에서 관측 effort를 무효화한다. 거부된 변경은 상태를 유지한다.
-- `command.run`의 `model`, `effort`, `config`를 통과시킨 뒤 reset하고 invalidate한다. 설정 UI가 취소되어도 다음 요청까지 effort가 `unknown`인 보수적인 동작을 허용한다.
-- 성공한 session/turn 경계와 메인 step 관측 뒤에 `$.ui.invalidate('ui.render')`를 호출한다. 별도 타이머와 polling은 사용하지 않는다.
+- `observeStep({ model, effort, agentId })`: observes only when there is no `agentId`. If effort is omitted for the same model, the existing value is kept, and if a new value (including the number 0) is passed, it is updated. A request for a different model replaces the observed model and effort even if effort is omitted, so the previous model's value does not carry over.
+- `reset()`: clears both the observed model and effort.
+- `snapshot(selectedModel)`: returns the observed effort only when the strings of the currently selected model and the observed model are the same. If the model alias and the resolved ID differ, it is safely shown as `unknown`.
+- Reset on `session.start` and `session.end`. The main `turn.start` only repaints, so the last observed value is kept on the next turn, during tool calls and on the waiting screen. No previous state remains after `/clear`, resume or reload.
+- Reset and invalidate on `classic.PostModelSwitch`.
+- Reset and invalidate after a successful `config.set`. To avoid depending on a list of setting keys, the observed effort is invalidated on every successful setting change. A rejected change keeps the state.
+- After letting `model`, `effort` and `config` of `command.run` pass through, reset and invalidate. Even if the settings UI is canceled, the conservative behavior of effort being `unknown` until the next request is allowed.
+- Call `$.ui.invalidate('ui.render')` after a successful session/turn boundary and after observing a main step. No separate timer or polling is used.
 
-자동 fallback 때문에 요청 모델과 선택 모델이 다르면 선택 모델을 표시하고 effort는 `unknown`이다. v1은 선택 모델 표시기이며 실제 요청 모델 이력 표시기는 아니다.
+If the requested model and the selected model differ because of an automatic fallback, the selected model is displayed and effort is `unknown`. v1 is a selected-model indicator, not an indicator of the actual requested-model history.
 
-## 4. 아키텍처와 환경
+## 4. Architecture and Environment
 
-기존 모드처럼 순수 TypeScript 코어와 얇은 엔진 어댑터를 분리한다.
+As with the existing mods, the pure TypeScript core and the thin engine adapter are separated.
 
 ```text
 model-effort-band/
   .claude-plugin/plugin.json
   hooks/hooks.json
-  hooks/register.tsx       # 이벤트 관측, 렌더 조합, 실패 격리
-  hooks/core/band.ts       # 모델/effort 정규화, 관측 상태, 폭별 표시 데이터
-  tests/band.test.ts       # Node와 엔진에서 실행 가능한 순수 코어 테스트
-  tests/adapter.test.ts    # 실제 엔진 테스트 키트로 이벤트·렌더 계약 검증
+  hooks/register.tsx       # event observation, render composition, failure isolation
+  hooks/core/band.ts       # model/effort normalization, observed state, per-width display data
+  tests/band.test.ts       # pure core tests runnable in Node and the engine
+  tests/adapter.test.ts    # verifies the event and render contract with the real engine test kit
   tsconfig.json
   README.md
   README_KR.md
 ```
 
-- 새 의존성은 추가하지 않는다.
-- Node 코어 검증: Node 22.19.0 이상, 기존 loader와 `expect` 사용.
-- 엔진 검증 기준: 로컬 Claude Code 2.1.292의 생성 타입과 바이너리. 기본 Mods 지원 하한은 2.1.287이지만 이 모드의 API 조합 호환성은 2.1.292 검증 결과를 기준으로 안내한다.
-- 터미널과 Desktop의 `AbovePrompt` 지원. VS Code 채팅과 headless 모드에는 시각 띠가 없다.
-- 프로세스 실행, 네트워크, 파일 I/O, 모델 호출, 프롬프트 수정, 설정 수정, persistence 없음.
-- 설정 옵션이나 토글 명령은 v1에 추가하지 않는다. 플러그인 관리 화면에서 비활성화할 수 있다.
+- No new dependencies are added.
+- Node core verification: Node 22.19.0 or later, using the existing loader and `expect`.
+- Engine verification baseline: the generated types and binary of local Claude Code 2.1.292. The default Mods support floor is 2.1.287, but this mod's API-combination compatibility is documented based on the 2.1.292 verification result.
+- `AbovePrompt` support in the terminal and Desktop. The VS Code chat and headless mode have no visual band.
+- No process execution, network, file I/O, model calls, prompt modification, settings modification or persistence.
+- No settings options or toggle commands are added in v1. It can be disabled from the plugin management screen.
 
-## 5. 실패 처리와 테스트 기준
+## 5. Failure Handling and Test Criteria
 
-관측 훅은 이벤트·스트림·최종 반환값을 변경하지 않는다. invalidate 실패를 격리하고 후속 이벤트를 정상 진행한다. downstream 실행 오류는 그대로 전파하며, 오류 뒤에 `next`를 다시 실행하지 않는다. 렌더 구축 실패는 이미 얻은 downstream 트리를 반환한다.
+The observation hook does not change events, streams or the final return value. It isolates invalidate failures and lets subsequent events proceed normally. Downstream execution errors propagate as they are, and `next` is not run again after an error. If building the render fails, the downstream tree already obtained is returned.
 
-완료 조건:
+Completion criteria:
 
-1. 모델명 형식, 모델/effort 조합, 누락·임의값·제어 문자를 코어 테스트로 검증한다.
-2. 폭 0/1/29/30/59/60과 행 수 0/1/2/3에서 레이아웃 전환을 검증한다.
-3. 서브에이전트 격리, 모델 변경, 같은 모델의 effort 누락 시 유지, 새 값 갱신, 턴 간 유지와 세션 reset을 검증한다.
-4. 실제 엔진 키트로 스트리밍 청크와 generator 최종 결과가 보존되는지 검증한다.
-5. 실제 엔진 키트로 survey pass-through, 다른 모드 트리 보존, 조회·invalidate 실패와 설정 변경 거부를 검증한다.
-6. `npm test`, 엔진 모드 테스트, typecheck, plugin validate를 실행한다. 기존 테스트 실패도 빠짐없이 보고한다.
-7. 터미널과 Desktop의 실제 캡처 검증 여부를 문서와 완료 보고에서 구분한다. 렌더 트리 테스트만으로 화면 검증을 주장하지 않는다.
-8. 설계/계획, 코어, 어댑터, 설치 통합 단위로 커밋하며 기존 `loop-detective` 작업은 포함하지 않는다.
+1. Verify the model name format, model/effort combinations, and missing, arbitrary and control-character values with core tests.
+2. Verify layout transitions at widths 0/1/29/30/59/60 and row counts 0/1/2/3.
+3. Verify subagent isolation, model change, keeping effort when it is omitted for the same model, updating to a new value, keeping across turns, and session reset.
+4. Verify with the real engine kit that streaming chunks and the generator's final result are preserved.
+5. Verify with the real engine kit survey pass-through, preservation of other mods' trees, lookup and invalidate failures, and rejection of setting changes.
+6. Run `npm test`, the engine mod tests, typecheck and plugin validate. Report existing test failures too, without omission.
+7. Distinguish in the documentation and the completion report whether real captures of the terminal and Desktop were verified. Do not claim screen verification from render-tree tests alone.
+8. Commit in units of design/plan, core, adapter and install integration, and do not include the existing `loop-detective` work.
 
-## 6. 근거와 현재 기준선
+## 6. Basis and Current Baseline
 
-- 공식 가이드: https://code.claude.com/docs/en/plugins/mods/create
-- 공식 API 참조: https://code.claude.com/docs/en/plugins/mods/reference
-- 로컬 근거: `agent-profiler/.claude-plugin/types/claude-code/index.d.ts`의 `TurnStepInput`, `AbovePrompt`, `session.model`, `config.set`, `PostModelSwitch`, `BoxProps`.
-- 구현 전 `npm test`: 199개 통과, 실패 0 (2026-10-13).
-- 현재 기본 `claude`: 2.1.280. 검증에는 설치되어 있는 VS Code 확장의 2.1.292 바이너리를 명시적으로 사용한다.
+- Official guide: https://code.claude.com/docs/en/plugins/mods/create
+- Official API reference: https://code.claude.com/docs/en/plugins/mods/reference
+- Local basis: `TurnStepInput`, `AbovePrompt`, `session.model`, `config.set`, `PostModelSwitch` and `BoxProps` in `agent-profiler/.claude-plugin/types/claude-code/index.d.ts`.
+- `npm test` before implementation: 199 passed, 0 failed (2026-10-13).
+- Current default `claude`: 2.1.280. For verification, the 2.1.292 binary of the installed VS Code extension is used explicitly.
 
-## 7. 구현 검증 기록 (2026-10-14)
+## 7. Implementation Verification Record (2026-10-14)
 
-- 기능 브랜치: `feat/model-effort-band`. 동시 진행 중인 작업을 보호하기 위해 독립 worktree에서 구현했다.
-- TDD: 코어 빈 구현을 38개 테스트로 실행해 기능 부재에 따른 assertion 실패를 확인한 뒤 구현했다. 어댑터는 빈 register에서 표시 테스트의 실패를 확인했다. 리로드 초기화와 텍스트 인접 배치는 결함을 제거/재현한 RED→GREEN 회귀 테스트로 추가 검증했다.
-- 코어 테스트: 총 237개 (새 모드 38개 포함), 실패 0. Node 22.19.0에서도 237개 전부 통과했다.
-- 엔진 테스트: 2.1.292에서 총 291개 (59 + 78 + 98 + 새 모드 56), 실패 0.
-- 전체 모드 typecheck 및 새 모드 plugin validate 통과.
-- 실제 화면: CLI의 작업 폴더 신뢰 확인 단계에서 중단했다. 신뢰 설정을 바꾸지 않았으며 터미널 픽셀·Desktop 실제 화면은 미검증이다.
-- 계획 보정: 2.1.292의 `turn.start`는 `agentId`가 없는 메인 턴 이벤트이므로 조건 없이 초기화한다. downstream 훅 오류는 엔진이 `HooksError`로 변환하므로 원문 오류 문자열 대신 실패 전달과 실행 한 번을 검증한다.
+- Feature branch: `feat/model-effort-band`. It was implemented in a separate worktree to protect work in progress.
+- TDD: The empty core implementation was run with 38 tests to confirm assertion failures from the missing functionality, and then implemented. For the adapter, the failure of the display tests was confirmed with an empty register. Reload initialization and text-adjacent placement were additionally verified with RED→GREEN regression tests that removed/reproduced the defects.
+- Core tests: 237 in total (including 38 for the new mod), 0 failed. All 237 also passed on Node 22.19.0.
+- Engine tests: 291 in total on 2.1.292 (59 + 78 + 98 + 56 for the new mod), 0 failed.
+- Typecheck of all mods and plugin validate of the new mod passed.
+- Real screen: stopped at the CLI's working-folder trust confirmation step. The trust setting was not changed, and the real terminal pixels and Desktop screen are unverified.
+- Plan correction: in 2.1.292, `turn.start` is a main-turn event without an `agentId`, so it is reset unconditionally. Downstream hook errors are converted into `HooksError` by the engine, so failure propagation and a single execution are verified instead of the original error string.
 
-### 최종 코드 리뷰
+### Final Code Review
 
-- 독립 리뷰어 결과: Critical 0, Important 0. 새 코어 38개를 별도로 실행해 모두 통과했다.
-- Minor 문서 지적: 렌더 실패 전체를 검증했다는 표현을 실제 테스트 대상인 모델 조회·화면 갱신 실패로 좁혔다. `ui.resolve`/요소 생성 실패 분기와 downstream `ui.render` 거부는 전용 테스트가 없다.
-- 실제 터미널·Desktop 픽셀, 임의 Unicode 말줄임, 여러 모드가 동시에 표시되는 화면은 미검증이다. 코드와 엔진 타입이 보장하는 폭 제한·말줄임·트리 보존 및 스크롤 계약을 사용하며 실제 화면 확인 시 재평가한다.
-- 최종 브랜치는 `feat/model-effort-band`에 보존한다. 다른 작업이 진행 중인 `main`에 대한 통합과 원격 push는 별도 선택 후 수행한다.
+- Independent reviewer result: Critical 0, Important 0. The 38 new core tests were run separately and all passed.
+- Minor documentation finding: the wording that all render failures were verified was narrowed to the model lookup and screen refresh failures that are actually tested. There are no dedicated tests for the `ui.resolve`/element creation failure branch or for a downstream `ui.render` rejection.
+- The real terminal and Desktop pixels, arbitrary Unicode ellipsis, and screens where several mods are displayed at the same time are unverified. The width limit, ellipsis, tree preservation and scrolling contracts guaranteed by the code and the engine types are used, and will be reassessed when the real screen is checked.
+- The final branch is preserved in `feat/model-effort-band`. Integration into `main`, where other work is in progress, and the remote push are done after a separate choice.
 
-## 8. effort 유지 수정 (2026-10-18)
+## 8. Effort Retention Fix (2026-10-18)
 
-- 재현: 같은 모델의 effort 누락이 기존 값을 지우고, 새 턴 시작 시에도 reset되어 다음 관측 전까지 `unknown`이 표시됐다.
-- 수정: 같은 모델에서 effort가 생략되면 마지막 값을 유지하고 턴 시작 시에는 초기화하지 않는다. 세션·모델·설정 변경의 초기화와 서브에이전트 격리는 유지한다.
-- TDD: 기존 구현에서 코어 회귀 2건과 어댑터 회귀 2건이 실패하는 것을 확인했다. 수정 후 새 모드 코어 40개와 Claude Code 2.1.301 엔진 테스트 59개가 모두 통과했다.
-- 전체 `npm test` 442개, 전체 typecheck 및 plugin validate도 통과했다. 실시간 화면 캡처 대신 엔진 렌더 트리에서 툴 실행을 대기시킨 상태·idle 표시·다음 턴의 유지 동작을 검증했다.
+- Reproduction: omitting effort for the same model cleared the existing value, and a reset also occurred at the start of a new turn, so `unknown` was shown until the next observation.
+- Fix: when effort is omitted for the same model, the last value is kept, and no reset occurs at turn start. The resets on session, model and settings changes and the subagent isolation are kept.
+- TDD: confirmed that 2 core regressions and 2 adapter regressions fail on the existing implementation. After the fix, all 40 core tests of the new mod and 59 Claude Code 2.1.301 engine tests passed.
+- The full `npm test` of 442, the full typecheck and plugin validate also passed. Instead of a live screen capture, the behavior of the state waiting on tool execution, the idle display and retention on the next turn was verified in the engine render tree.

@@ -1,160 +1,160 @@
-# Pin Memo — 설계 스펙
+# Pin Memo — Design Spec
 
-- 작성일: 2026-10-13 (Asia/Seoul)
-- 상태: 사용자 승인 후 구현·검증 완료 (2026-10-14, Asia/Seoul).
-- 모드명 / 위치: `pin-memo` / `pin-memo/`
-- 목적: Claude Code 입력창 위에 메모와 체크리스트를 고정하고, 같은 폴더에서 같은 세션을 재개하면 복원한다.
-- 디자인 근거: 첨부 이미지의 어두운 바탕, 청록색 둥근 테두리, 핀 제목, 체크 항목과 흐린 완료 항목. 이미지 속 메모 내용은 기능 지시로 해석하지 않는다.
+- Written: 2026-10-13 (Asia/Seoul)
+- Status: Implementation and verification completed after user approval (2026-10-14, Asia/Seoul).
+- Mod name / location: `pin-memo` / `pin-memo/`
+- Purpose: Pin memos and a checklist above the Claude Code input box, and restore them when the same session is resumed in the same folder.
+- Design basis: The dark background, rounded teal border, pin title, check items and dimmed completed items in the attached image. The memo contents in the image are not interpreted as functional instructions.
 
-## 1. 요구 해석과 접근 방식
+## 1. Interpretation of the Request and Approach
 
-사용자가 요구한 기본 진입점은 `/pin <memo>`다. 메모는 일반 대화나 모델 컨텍스트에 삽입하지 않고 사용자용 UI 데이터로 관리한다. 작업 진행 중, 턴 완료 후, 대화 압축 후에도 표시한다.
+The default entry point the user asked for is `/pin <memo>`. Memos are not inserted into the regular conversation or the model context; they are managed as UI data for the user. They are displayed while work is in progress, after a turn completes, and after conversation compaction.
 
-“같은 폴더에서 연 동일한 세션”은 폴더 경로와 세션 ID가 모두 같은 경우로 정의한다. 같은 폴더의 새 세션, 다른 폴더의 세션에는 기존 목록이 나타나지 않는다. `/clear`는 새 세션이므로 빈 목록으로 시작하며 이전 세션의 저장 데이터는 보존한다.
+“The same session opened in the same folder” is defined as the case where both the folder path and the session ID are the same. The existing list does not appear in a new session in the same folder or in a session in a different folder. `/clear` is a new session, so it starts with an empty list, and the previous session's stored data is preserved.
 
-| 접근 | 장점 | 비용 / 제약 |
+| Approach | Advantage | Cost / Constraint |
 |---|---|---|
-| `AbovePrompt` + 엔진 `$.store` (권장) | 요청한 배치, 재개·리로드 복원, 저장 경로 관리 불필요 | 플러그인 저장소 전체 4 MiB 한도; 프로세스 간 원자적 갱신 API 없음 |
-| `AbovePrompt` + 별도 JSON 파일 | 저장 용량과 파일 경로를 직접 관리 | 디렉터리·쓰기·손상·파일 충돌 처리 추가 필요 |
-| 별도 Pane | 넓은 관리 화면 | 입력창 바로 위 고정 요구를 충족하지 못함 |
+| `AbovePrompt` + engine `$.store` (recommended) | The requested placement, restoration on resume and reload, no need to manage a storage path | 4 MiB limit for the whole plugin store; no atomic update API across processes |
+| `AbovePrompt` + a separate JSON file | Storage size and file path are managed directly | Handling of directories, writes, corruption and file conflicts must be added |
+| Separate Pane | A wide management screen | Does not meet the requirement of being pinned directly above the input box |
 
-새 의존성, 모델 호출, 네트워크 요청, 백그라운드 polling은 추가하지 않는다.
+No new dependencies, model calls, network requests or background polling are added.
 
-## 2. 명령 계약
+## 2. Command Contract
 
-| 명령 | 동작 |
+| Command | Behavior |
 |---|---|
-| `/pin <memo>` | 일반 메모 추가 |
-| `/pin - [ ] <memo>` 또는 `/pin [ ] <memo>` | 미완료 체크 항목 추가 |
-| `/pin - [x] <memo>` 또는 `/pin [x] <memo>` | 완료 체크 항목 추가 (`X`도 허용) |
-| `/pin add <memo>` | 명시적 추가; `help`, `clear` 같은 예약어 자체도 메모로 저장 가능 |
-| `/pin` 또는 `/pin list` | 전체 목록과 번호를 텍스트로 출력 |
-| `/pin toggle <id>` | 체크 항목의 완료 상태 전환 |
-| `/pin check <id>` / `/pin uncheck <id>` | 체크 상태를 명시적으로 지정; 중복 호출은 상태를 다시 뒤집지 않음 |
-| `/pin edit <id> <memo>` | 내용 수정; 체크 마커를 붙이면 체크 항목으로, 생략하면 일반 메모로 변경 |
-| `/pin remove <id>` | 지정 항목 삭제 |
-| `/pin clear` | 현재 세션 목록 전체 삭제 |
-| `/pin help` | 명령 사용법 출력 |
+| `/pin <memo>` | Add a regular memo |
+| `/pin - [ ] <memo>` or `/pin [ ] <memo>` | Add an unchecked check item |
+| `/pin - [x] <memo>` or `/pin [x] <memo>` | Add a completed check item (`X` is also allowed) |
+| `/pin add <memo>` | Explicit add; reserved words such as `help` and `clear` themselves can also be saved as memos |
+| `/pin` or `/pin list` | Print the whole list and the numbers as text |
+| `/pin toggle <id>` | Toggle the completion state of a check item |
+| `/pin check <id>` / `/pin uncheck <id>` | Set the check state explicitly; a duplicate call does not flip the state again |
+| `/pin edit <id> <memo>` | Edit the content; adding a check marker changes it to a check item, omitting it changes it to a regular memo |
+| `/pin remove <id>` | Delete the specified item |
+| `/pin clear` | Delete the whole list of the current session |
+| `/pin help` | Print command usage |
 
-- 앞뒤 공백만 제거하고 본문의 줄바꿈을 보존한다. 여러 줄 입력 하나는 메모 하나다. 체크 마커는 본문 시작에서만 해석한다.
-- 빈 내용, 마커만 있는 내용, 없는 ID, 일반 메모에 대한 체크 명령, 명령 인자 누락은 오류 안내를 반환하고 저장 상태를 바꾸지 않는다.
-- ID는 세션별 증가하는 양의 정수다. 삭제 후 번호를 재사용하거나 남은 항목 번호를 재정렬하지 않는다. `clear`도 다음 번호를 초기화하지 않는다.
-- 예약어로 시작하는 내용을 추가하려면 `/pin add ...`를 사용한다. 알 수 없는 첫 단어는 일반 메모로 추가한다.
-- 최대 100개 항목, 항목당 2,000 Unicode 코드 포인트를 허용한다. 초과 시 명시적으로 거부하고 잘라서 저장하지 않는다.
-- 사용자 입력의 ANSI 시퀀스, C0/C1 제어 문자(줄바꿈 제외)는 제거한다. 정리 후 빈 내용도 거부한다.
-- 명령 결과는 등록된 로컬 명령의 텍스트 응답이다. 프롬프트 수정이나 모델 실행을 요청하지 않는다.
+- Only leading and trailing whitespace is removed, and line breaks in the body are preserved. One multi-line input is one memo. The check marker is interpreted only at the start of the body.
+- Empty content, content with only a marker, a nonexistent ID, a check command on a regular memo, and a missing command argument return an error message and do not change the stored state.
+- IDs are positive integers that increase per session. Numbers are not reused after deletion, and the remaining items are not renumbered. `clear` does not reset the next number either.
+- To add content that starts with a reserved word, use `/pin add ...`. An unknown first word is added as a regular memo.
+- A maximum of 100 items and 2,000 Unicode code points per item are allowed. Anything over that is explicitly rejected and is not truncated and saved.
+- ANSI sequences and C0/C1 control characters (except line breaks) in user input are removed. Content that is empty after cleanup is also rejected.
+- The command result is a text response of a registered local command. It does not request a prompt modification or a model run.
 
-## 3. 고정 영역 디자인과 조작
+## 3. Pinned Area Design and Interaction
 
 ```text
 ╭──────────────────────────────────────────────────────╮
-│ 📌 핀 3 (완료 1)                                     │
-│ 1 · 변경 전 테스트 확인                              │
-│ [ ] 2 배포 전 .env 키 확인                            │
-│ [x] 3 렌더 끝나면 드라이브에 올리기                   │
+│ 📌 Pin 3 (1 done)                                    │
+│ 1 · Check tests before the change                    │
+│ [ ] 2 Check .env keys before deploy                  │
+│ [x] 3 Upload to Drive when the render finishes       │
 ╰──────────────────────────────────────────────────────╯
 ```
 
-- 테두리: 둥근 모양, 청록 `#62B8AD`. 제목: 따뜻한 노랑 `#D5C57A`, 본문: `#D6D9E0`.
-- 미완료 체크 항목은 본문색, 완료 항목은 흐린 회색과 취소선으로 표시한다. 완료 항목은 자동 삭제하거나 재정렬하지 않는다.
-- 이미지의 어두운 바탕은 기존 터미널 테마와 조화시키며, 픽셀 단위 그림 재현을 약속하지 않는다. 엔진 Box/Text 스타일이 지원하는 범위에서 배경 `#1D2029`를 적용한다.
-- 일반 메모는 Text, 체크 항목 앞의 `[ ]` / `[x]`는 안정적인 key를 가진 Button이다. 클릭 또는 밴드 포커스 후 Tab/Enter로 전환한다.
-- 체크 버튼에 숫자 hotkey를 지정하지 않는다. 빈 입력창에서 숫자가 명령을 실행하는 엔진 동작과 사용자의 입력을 충돌시키지 않는다.
-- 포커스·접기·스크롤은 엔진이 제공하는 `AbovePrompt` 동작을 따른다. 자체 `[접기]` 버튼은 중복 추가하지 않는다.
-- `bodyColumns >= 30`, `maxRows >= 3`이면 테두리와 제목을 표시한다. 더 좁은 영역에서는 테두리를 생략하고 제목·항목을 간결하게 표시한다. 영역 폭이나 높이가 0이면 표시하지 않는다.
-- 폭이 좁으면 표시 본문만 말줄임 처리하며 저장 원문은 유지한다. 한 항목의 고정 영역 표시는 한 줄로 정리하고, 전체 내용은 `/pin list`로 확인한다.
-- 많은 항목은 엔진의 밴드 스크롤과 `n more` 표시를 사용한다. 렌더링 자체가 항목을 삭제하지 않는다.
-- 빈 목록이면 고정 영역을 추가하지 않는다.
-- 설문이 슬롯을 사용하는 `hasSurvey === true`에서는 엔진 UI에 양보한다. 설문이 끝나면 메모가 다시 표시된다.
-- 다른 모드의 `next(e)` 렌더 트리를 보존하고 자신의 영역을 이어 붙인다. 렌더 실패 시 확보한 기존 트리를 반환한다.
-- 메인 대화와 서브에이전트 보기 모두 현재 메인 세션의 메모를 표시한다. 서브에이전트별 목록은 만들지 않는다.
-- 터미널·Desktop의 `AbovePrompt` 대상이다. VS Code 채팅과 headless 환경에서는 명령과 저장 기능만 제공한다.
+- Border: rounded shape, teal `#62B8AD`. Title: warm yellow `#D5C57A`, body: `#D6D9E0`.
+- Unchecked check items are shown in the body color, and completed items in dim gray with strikethrough. Completed items are not automatically deleted or reordered.
+- The dark background of the image is harmonized with the existing terminal theme, and no pixel-exact reproduction of the picture is promised. The background `#1D2029` is applied within what the engine's Box/Text styles support.
+- A regular memo is a Text, and the `[ ]` / `[x]` before a check item is a Button with a stable key. It toggles by click, or by Tab/Enter after focusing the band.
+- No numeric hotkey is assigned to the check button. The user's input is not made to conflict with the engine behavior where a number executes a command in an empty input box.
+- Focus, collapse and scroll follow the `AbovePrompt` behavior the engine provides. A custom `[Collapse]` button is not added redundantly.
+- If `bodyColumns >= 30` and `maxRows >= 3`, the border and title are shown. In a narrower area, the border is omitted and the title and items are shown concisely. If the area width or height is 0, nothing is shown.
+- When the width is narrow, only the displayed body is truncated with an ellipsis, and the stored original is kept. The pinned-area display of one item is condensed to one line, and the full content is checked with `/pin list`.
+- For many items, the engine's band scroll and the `n more` indicator are used. Rendering itself does not delete items.
+- If the list is empty, no pinned area is added.
+- When `hasSurvey === true`, where a survey uses the slot, it yields to the engine UI. When the survey ends, the memos are shown again.
+- The render tree of other mods' `next(e)` is preserved and this mod's own area is appended to it. If rendering fails, the existing tree already obtained is returned.
+- Both the main conversation and the subagent view show the current main session's memos. No per-subagent list is created.
+- It targets `AbovePrompt` in the terminal and Desktop. In the VS Code chat and headless environments, only the commands and the storage feature are provided.
 
-## 4. 상태와 저장 계약
+## 4. State and Storage Contract
 
-### 저장 키와 문서
+### Storage Key and Document
 
-키는 `pin-memo:v1:`에 `JSON.stringify([absoluteCwd, sessionId])`를 붙인다. 해시 충돌과 경로 구분자 해석을 피하고 경로·ID를 키의 문자열 데이터로만 취급한다. 경로는 엔진 `$.session.cwd()`가 반환한 절대 경로에서 루트 외의 끝 구분자만 정리한다. 서로 다른 심볼릭 링크 경로는 서로 다른 폴더로 취급한다.
+The key is `pin-memo:v1:` followed by `JSON.stringify([absoluteCwd, sessionId])`. This avoids hash collisions and path-separator interpretation, and treats the path and ID only as string data of the key. The path is the absolute path returned by the engine's `$.session.cwd()`, with only a trailing separator other than the root removed. Different symbolic-link paths are treated as different folders.
 
 ```ts
 type Memo = { id: number; text: string; checked: boolean | null }
 type MemoDocument = { version: 1; nextId: number; items: Memo[] }
 ```
 
-`checked: null`은 일반 메모다. 문서를 읽을 때 버전, ID의 양의 정수·중복 여부, nextId의 증가 관계, 문자열 내용·길이, 항목 수, 체크 상태를 검증한다. 잘못된 문서를 일부 복구했다고 가장하지 않는다.
+`checked: null` is a regular memo. When reading a document, the version, whether IDs are positive integers and unique, the increasing relation of nextId, the string contents and length, the item count, and the check state are validated. A bad document is not pretended to be partially recovered.
 
-### 수명과 동시 실행
+### Lifetime and Concurrent Execution
 
-- 상태는 `register` 호출 내부의 컨트롤러에 둔다. 모듈 전역 mutable 목록을 두지 않는다.
-- `session.start`에서 명령 등록 후 현재 identity의 저장 문서를 로드한다. 핫 리로드도 같은 데이터를 로드한다.
-- 모든 변경은 즉시 `$.store.set`으로 저장한다. 정상 종료 훅에서만 저장하는 방식은 쓰지 않는다.
-- 한 프로세스의 변경은 직렬 큐로 처리한다. 저장 성공 후 메모리 목록을 교체하고 invalidate한다. 빠른 연속 체크·추가가 이전 스냅샷으로 덮어쓰지 않도록 한다.
-- 로딩 중 들어온 명령은 해당 identity의 로드 완료를 기다린다. 렌더링은 I/O나 상태 변경을 수행하지 않는다.
-- `session.end`의 clear/resume에서 이전 view를 무효화하고 downstream을 통과시킨 뒤 새 identity를 로드한다. 메인 `turn.start`와 명령 실행 전에도 identity를 확인해 전환 누락을 방어한다.
-- 이전 로드 완료·이전 화면의 체크 콜백이 새 세션 상태를 덮어쓰지 못하도록 identity와 generation을 확인한다. 이전 세션에서 이미 승인된 변경은 이전 세션 키에만 저장할 수 있다.
-- 오래된 UI 체크 콜백은 체크값을 캡처해 반전시키지 않고 큐 안의 최신 항목 상태를 전환한다.
-- 같은 세션을 여러 프로세스에서 동시에 편집하는 실시간 동기화는 v1 범위에서 제외한다. `$.store`에 compare-and-swap 계약이 없으므로 이 경우 충돌 방지를 보장하지 않는다. README에 이 제한을 명시한다.
-- 저장 데이터의 자동 만료·자동 삭제는 추가하지 않는다. 한도 초과는 저장 오류로 다룬다.
+- State lives in a controller inside the `register` call. No module-global mutable list is kept.
+- On `session.start`, after registering the commands, the stored document of the current identity is loaded. A hot reload loads the same data.
+- Every change is saved immediately with `$.store.set`. Saving only in a normal-shutdown hook is not used.
+- Changes within one process are handled by a serial queue. After a successful save, the in-memory list is replaced and invalidated. Rapid consecutive checks and additions must not overwrite with an older snapshot.
+- A command that arrives during loading waits for the load of that identity to complete. Rendering performs no I/O or state change.
+- On clear/resume in `session.end`, the previous view is invalidated, the downstream is passed through, and then the new identity is loaded. The identity is also checked on the main `turn.start` and before command execution to guard against a missed transition.
+- Identity and generation are checked so that a previous load completion or a check callback from a previous screen cannot overwrite the new session's state. A change already approved in the previous session can be saved only under the previous session's key.
+- A stale UI check callback does not capture the check value and invert it; it toggles the latest item state inside the queue.
+- Real-time synchronization of editing the same session from several processes at once is excluded from the v1 scope. Since `$.store` has no compare-and-swap contract, conflict prevention is not guaranteed in this case. This limitation is stated explicitly in the README.
+- No automatic expiry or automatic deletion of stored data is added. Exceeding the limit is treated as a save error.
 
-### 실패 처리
+### Failure Handling
 
-- identity 조회 실패: 다른 세션의 목록을 표시하지 않고 변경을 거부한다. 다음 정상 조회에서 복구 가능하다.
-- 저장소 읽기 실패 / 손상·알 수 없는 버전: 목록이 비었다고 처리해 덮어쓰지 않는다. 오류 상태를 표시하고 읽기를 재시도한다. 명시적 `/pin clear`만 현재 키를 초기화할 수 있다.
-- 쓰기 실패: 기존 목록을 유지하고 “저장하지 못했습니다”를 표시한다. 성공 안내나 화면 체크 변경을 먼저 보여주지 않는다.
-- UI invalidate 실패는 저장 성공을 취소하지 않는다. 다음 렌더에서 최신 상태가 나타난다.
-- session/turn 관측 훅은 downstream의 이벤트·반환값·예외를 보존한다. `next`를 중복 호출하지 않는다.
+- Identity lookup failure: the list of another session is not shown and changes are rejected. It can recover on the next successful lookup.
+- Storage read failure / corrupted or unknown version: it is not treated as an empty list and overwritten. An error state is shown and the read is retried. Only an explicit `/pin clear` can reset the current key.
+- Write failure: the existing list is kept and “Could not save” is shown. A success message or an on-screen check change is not shown first.
+- A UI invalidate failure does not cancel a successful save. The latest state appears on the next render.
+- The session/turn observation hooks preserve the downstream's events, return values and exceptions. `next` is not called twice.
 
-## 5. 구현 경계
+## 5. Implementation Boundaries
 
 ```text
 pin-memo/
   .claude-plugin/plugin.json
   hooks/hooks.json
-  hooks/register.tsx          # 명령 등록, 세션 identity, AbovePrompt/Button
-  hooks/core/memo.ts          # 문서 검증, 명령 해석, 불변 상태 갱신
-  hooks/core/controller.ts    # 주입한 저장소, 직렬 변경, 세션 전환 격리
-  hooks/core/view.ts          # 제목·행 텍스트·폭별 표시 데이터
+  hooks/register.tsx          # command registration, session identity, AbovePrompt/Button
+  hooks/core/memo.ts          # document validation, command parsing, immutable state updates
+  hooks/core/controller.ts    # injected store, serial changes, session-transition isolation
+  hooks/core/view.ts          # title, row text, per-width display data
   tests/memo.test.ts
   tests/controller.test.ts
   tests/view.test.ts
-  tests/adapter.test.ts       # 실제 엔진의 렌더·press·lifecycle 계약
+  tests/adapter.test.ts       # real engine render, press and lifecycle contract
   tsconfig.json
   README.md
   README_KR.md
 ```
 
-기존 marketplace, README의 모드 목록, package.json typecheck, 두 테스트 실행 스크립트, 생성 타입 ignore에 `pin-memo`를 추가한다. 현재 작업 중인 `loop-detective` 변경을 보존한다.
+Add `pin-memo` to the existing marketplace, the README's mod list, the package.json typecheck, the two test-run scripts, and the generated-types ignore. The `loop-detective` changes currently in progress are preserved.
 
-Node 코어 테스트는 Node 22.19.0 이상과 기존 loader를 사용한다. 엔진 검증은 설치되어 있는 Claude Code 2.1.292 바이너리와 그 버전이 생성하는 타입을 기준으로 한다. 기본 PATH의 2.1.280을 호환성 근거로 사용하지 않는다.
+The Node core tests use Node 22.19.0 or later and the existing loader. Engine verification is based on the installed Claude Code 2.1.292 binary and the types that version generates. The 2.1.280 on the default PATH is not used as a basis for compatibility.
 
-## 6. TDD와 완료 기준
+## 6. TDD and Completion Criteria
 
-각 구현 단위에서 테스트 작성 → 요구 동작 부재로 실패 확인 → 최소 구현 → 통과 확인 → 리팩터 순서로 진행한다. 실행하지 않은 테스트를 통과했다고 보고하지 않는다.
+In each implementation unit, proceed in the order: write the test → confirm failure due to the missing required behavior → minimal implementation → confirm it passes → refactor. Do not report a test that was not run as passing.
 
-1. 명령: 기본 추가, 체크 마커, 예약어 escape, 다중 행, 수정/삭제/명시적 체크/전환, 입력 오류, 안정적인 ID, 길이·개수 제한, 제어 문자 정리를 검증한다.
-2. 저장: 동일 identity의 새 컨트롤러에서 복원, 다른 폴더·다른 세션 격리, clear 후 이전 세션 재개, 저장/읽기 실패, 손상 문서·미지원 버전을 검증한다.
-3. 경합: 로드 중 추가, 연속 toggle, 지연된 이전 세션 로드와 저장, 이전 UI 콜백, 실패 후 큐의 후속 작업을 검증한다.
-4. 표시: 일반/미완료/완료, 카운트, 빈 목록, Unicode와 긴 메모, 폭 0/1/29/30 및 높이 0/1/2/3, 많은 항목에서 원문 보존을 검증한다.
-5. 엔진 어댑터: 명령 등록·처리, `AbovePrompt` 기존 트리 보존, survey 양보, 실제 Button press와 저장·재렌더, 세션 전환·리로드, 읽기·쓰기·invalidate 실패를 검증한다.
-6. `npm test`, 엔진 모드 테스트, typecheck, plugin validate를 실행한다. 기존 테스트 실패도 이름과 함께 보고한다.
-7. 실제 터미널·Desktop 캡처 확인 여부를 분리해 기록한다. 렌더 트리 테스트를 실제 화면 검증이라고 표현하지 않는다.
+1. Commands: verify basic add, check markers, reserved-word escape, multiple lines, edit/delete/explicit check/toggle, input errors, stable IDs, length and count limits, and control-character cleanup.
+2. Storage: verify restoration in a new controller of the same identity, isolation of other folders and other sessions, resuming the previous session after clear, save/read failures, and corrupted documents and unsupported versions.
+3. Contention: verify adding during load, consecutive toggles, delayed load and save of a previous session, a previous UI callback, and the queue's follow-up work after a failure.
+4. Display: verify regular/unchecked/completed, counts, an empty list, Unicode and long memos, widths 0/1/29/30 and heights 0/1/2/3, and preservation of the original with many items.
+5. Engine adapter: verify command registration and handling, preservation of the existing `AbovePrompt` tree, yielding to a survey, a real Button press with save and re-render, session transition and reload, and read/write/invalidate failures.
+6. Run `npm test`, the engine mod tests, typecheck and plugin validate. Report existing test failures too, together with their names.
+7. Record separately whether real terminal and Desktop captures were checked. Do not describe render-tree tests as real screen verification.
 
-## 7. 근거
+## 7. Basis
 
-- 공식 가이드: https://code.claude.com/docs/en/plugins/mods/create
-- 로컬 생성 타입: `agent-profiler/.claude-plugin/types/claude-code/index.d.ts`의 `AbovePrompt`, `ButtonProps`, `store`, `SessionEndInput`, `session.id`, `session.cwd`.
-- 기존 어댑터 패턴: `context-inspector/hooks/register.tsx`, `loop-detective/hooks/register.tsx`.
-- 기존 코어 테스트 실행 방식: `scripts/test-core.mjs`, `scripts/core-loader.mjs`.
+- Official guide: https://code.claude.com/docs/en/plugins/mods/create
+- Local generated types: `AbovePrompt`, `ButtonProps`, `store`, `SessionEndInput`, `session.id` and `session.cwd` in `agent-profiler/.claude-plugin/types/claude-code/index.d.ts`.
+- Existing adapter patterns: `context-inspector/hooks/register.tsx`, `loop-detective/hooks/register.tsx`.
+- Existing way of running core tests: `scripts/test-core.mjs`, `scripts/core-loader.mjs`.
 
-## 8. 최종 검증 기록 (2026-10-14)
+## 8. Final Verification Record (2026-10-14)
 
-- 사용자 지시에 따라 main에서 단위별 커밋을 유지했다. 일시 생성한 로컬 `feat/pin-memo`는 커밋을 main에 보존한 뒤 삭제했다.
-- `npm test`: 284/284 통과.
-- Claude Code 2.1.292 `npm run test:adapters`: 361/361 통과 (Pin Memo 29/29).
-- `npm run typecheck`, `plugin validate pin-memo`, `git diff --check`: 통과.
-- Marketplace 검증: 통과; 기존 marketplace description 누락 경고 1개.
-- 독립 리뷰 후 새 identity 실패/이전 응답 경합, 이전 화면 체크 콜백의 세대 검증, POSIX 경로의 백슬래시 보존, 보조 평면 Unicode 폭을 회귀 테스트로 수정했다.
-- 저장 로드 중 추가, lifecycle 반환·오류 보존도 검증했다.
-- 실제 터미널·Desktop 픽셀 캡처 검증은 수행하지 않았다. 렌더 트리·Button press 검증 결과와 구분한다.
+- Following the user's instruction, per-unit commits were kept on main. The temporarily created local `feat/pin-memo` was deleted after the commits were preserved on main.
+- `npm test`: 284/284 passed.
+- Claude Code 2.1.292 `npm run test:adapters`: 361/361 passed (Pin Memo 29/29).
+- `npm run typecheck`, `plugin validate pin-memo`, `git diff --check`: passed.
+- Marketplace validation: passed; 1 existing warning about a missing marketplace description.
+- After the independent review, the following were fixed with regression tests: new-identity failure / previous-response contention, generation validation of the previous screen's check callback, preservation of backslashes in POSIX paths, and supplementary-plane Unicode width.
+- Adding during a store load, and preservation of lifecycle return values and errors, were also verified.
+- Real terminal and Desktop pixel capture verification was not performed. It is distinguished from the render-tree and Button press verification results.
 
-- main에 model-effort-band가 통합된 뒤 최신 테스트 실행기 기준으로 전체 검증을 다시 수행했다. 위 전체 테스트 수는 해당 통합을 포함하며 Pin Memo 자체는 엔진 29/29다.
+- After model-effort-band was integrated into main, the full verification was run again with the latest test runner. The total test counts above include that integration, and Pin Memo itself is 29/29 in the engine.

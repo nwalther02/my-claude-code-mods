@@ -3074,76 +3074,76 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 `context-inspector/README.md`:
 
 ````markdown
-# Context Inspector — 컨텍스트 낭비 분석기
+# Context Inspector — Context Waste Analyzer
 
-Claude Code 세션에서 컨텍스트 창을 무엇이 채우는지, 같은 정보가 왜 다시 들어오는지, 컴팩션이 무엇을 남기고 잃었는지 보여 주는 mod.
-관찰만 한다: 행·도구 호출·컴팩션을 바꾸지 않는다.
+A mod that shows what fills the context window in a Claude Code session, why the same information keeps coming back in, and what compaction kept and lost.
+It only observes: it does not change rows, tool calls, or compactions.
 
-## 설치
+## Installation
 
 ```
 /plugin install context-inspector --marketplace YeonwooSung/my-claude-code-mods
 ```
 
-Claude Code 2.1.287 이상(mods 기본 활성화). 그보다 오래된 빌드는 `CLAUDE_CODE_ENABLE_FUNCTION_HOOKS=1`.
+Claude Code 2.1.287 or later (mods enabled by default). Older builds need `CLAUDE_CODE_ENABLE_FUNCTION_HOOKS=1`.
 
-## 명령
+## Commands
 
-| 명령 | 내용 |
+| Command | What it does |
 |---|---|
-| `/context-inspect [overview\|occupants\|rereads\|similar\|compactions\|efficiency\|advice] [--agents]` | 텍스트 보고서. 기본은 main 컨텍스트의 overview, `--agents`는 서브에이전트 포함 |
-| `/context-pane` | 실시간 패널(터미널, 데스크톱 앱) |
-| `/context-export` | 원문 없이 메타데이터만 JSONL로 저장: `<outputDir>/<sessionId>/context-<load>-<n>.jsonl` |
+| `/context-inspect [overview\|occupants\|rereads\|similar\|compactions\|efficiency\|advice] [--agents]` | Text report. The default is the overview of the main context; `--agents` includes subagents |
+| `/context-pane` | Live panel (terminal, desktop app) |
+| `/context-export` | Saves metadata only, without raw text, as JSONL: `<outputDir>/<sessionId>/context-<load>-<n>.jsonl` |
 
-상태줄: `ctx 62% · waste≈8.1k` (창 점유율은 측정값, 낭비는 추정).
+Status line: `ctx 62% · waste≈8.1k` (window occupancy is measured, waste is estimated).
 
-## 무엇을 재는가 — 관찰 가능성 등급
+## What is measured — observability grades
 
-| 등급 | 예 |
+| Grade | Example |
 |---|---|
-| measured | 요청마다 API가 보고한 입력 토큰(uncached + cache read + cache write), 컴팩션 전/후 토큰 |
-| observed | 대화에 들어온 행의 문자 수·해시, 컴팩션 전/후 메시지 집합 |
-| estimated (`≈`) | 항목별 토큰 = 문자 수/4(이미지 1,500) × 보정 계수 k (측정된 입력 증가량으로 0.5–2.0 사이에서 보정) |
+| measured | Input tokens the API reports per request (uncached + cache read + cache write), tokens before/after compaction |
+| observed | Character count and hash of rows entering the conversation, message sets before/after compaction |
+| estimated (`≈`) | Per-item tokens = characters/4 (1,500 per image) × calibration factor k (calibrated between 0.5 and 2.0 against measured input growth) |
 
-모델 내부의 토큰별 주의(attention)나 정확한 점유율은 외부에서 보이지 않으므로 주장하지 않는다.
+Per-token attention inside the model and exact occupancy are not visible from outside, so they are not claimed.
 
-## 분석
+## Analysis
 
-- **점유**: 현재 창에 남은 항목을 범주(도구 이름, `attachment:<name>`, prompt/response)와 대상(파일, 명령)별로.
-- **재읽기**: 같은 파일의 두 번째 이후 읽기를 분류한다 — `engine-deduped`(엔진이 "unchanged" 안내로 대신함), `restored`(컴팩션 후 엔진이 다시 붙임), `different-range`, `after-edit`, `after-compaction`, `changed-externally`, `unchanged-live`(이전 사본이 아직 창에 있음 = 순수 낭비).
-- **유사 출력**: 같은 해시(정확) 또는 64비트 SimHash 해밍 거리 ≤ 3(근사). 단어 3-shingle 기반 **어휘** 유사도이며 의미(임베딩) 유사도가 아니다. 숫자는 `#`로 접어 실행 시간만 다른 테스트 출력도 묶인다.
-- **컴팩션**: 컴팩션 전 대화에서 편집 파일·읽은 파일·오류·사용자 식별자를 뽑아, 요약과 유지된 메시지에 남았는지 본다. 잃은 편집 파일과, 컴팩션 때문에 다시 읽은 양(reflow)을 보고한다.
-- **효율**: 메인 턴별 측정 입력 증가량 대비 변경 라인 수(Edit/MultiEdit/Write/NotebookEdit). 편집 없이 커진 턴은 "탐색 턴"으로 표시만 한다(탐색은 결함이 아니다).
-- **추천**: 무변경 재읽기, 큰 파일 통째 읽기, 긴 명령 출력, 반복 출력, 컴팩션이 잃은 편집 파일, 컴팩션 후 재유입, 긴 서브에이전트 결과, 호출되지 않은 MCP 서버, 큰 메모리 파일. 각 추천에 근거와 ≈절감량이 붙는다.
+- **Occupancy**: items remaining in the current window, by category (tool name, `attachment:<name>`, prompt/response) and target (file, command).
+- **Re-reads**: classifies second and later reads of the same file — `engine-deduped` (the engine substituted an "unchanged" notice), `restored` (the engine re-attached it after compaction), `different-range`, `after-edit`, `after-compaction`, `changed-externally`, `unchanged-live` (the earlier copy is still in the window = pure waste).
+- **Similar outputs**: the same hash (exact) or a 64-bit SimHash Hamming distance ≤ 3 (near). This is **lexical** similarity based on word 3-shingles, not semantic (embedding) similarity. Numbers are folded to `#`, so test outputs that differ only in run time are also grouped.
+- **Compaction**: extracts edited files, read files, errors, and user identifiers from the pre-compaction conversation and checks whether they remain in the summary and the retained messages. Reports the edited files lost and the amount re-read because of compaction (reflow).
+- **Efficiency**: changed lines (Edit/MultiEdit/Write/NotebookEdit) relative to measured input growth, per main turn. Turns that grew without edits are only marked as "exploration turns" (exploration is not a defect).
+- **Advice**: unchanged re-reads, whole-file reads of large files, long command output, repeated output, edited files lost to compaction, re-inflow after compaction, long subagent results, MCP servers that were never called, large memory files. Each piece of advice carries its evidence and ≈savings.
 
-## 설정 (userConfig)
+## Settings (userConfig)
 
-| 키 | 기본 | 뜻 |
+| Key | Default | Meaning |
 |---|---|---|
-| `outputDir` | `~/.claude/context-inspector` | `/context-export` 위치 |
-| `toastAdvice` | `true` | high 추천이 처음 생길 때 세션당 한 번 토스트 |
+| `outputDir` | `~/.claude/context-inspector` | Location for `/context-export` |
+| `toastAdvice` | `true` | One toast per session the first time a high-severity advice appears |
 
-## 내보내기 형식
+## Export format
 
-한 줄에 JSON 하나: `meta`, `item`(seq, ctx, turn, door, category, target, chars, est, hash, simhash, born, epoch, live …), `edit`, `sample`, `compaction`, `summary`.
-원문은 없다. 명령·패턴·URL 대상은 비밀값 마스킹 후 200자로 자른다. 컴팩션 엔티티 중 오류와 사용자 식별자는 해시만 남는다.
+One JSON object per line: `meta`, `item` (seq, ctx, turn, door, category, target, chars, est, hash, simhash, born, epoch, live …), `edit`, `sample`, `compaction`, `summary`.
+There is no raw text. Command, pattern, and URL targets are truncated to 200 characters after secret masking. Of the compaction entities, errors and user identifiers keep only their hashes.
 
-## 실행 환경
+## Runtime environments
 
-| 환경 | 동작 |
+| Environment | Behavior |
 |---|---|
-| 터미널 | 상태줄, 패널, 토스트, 명령 모두 |
-| VS Code 채팅 패널 | 훅과 명령 텍스트만(mod의 그림은 표시되지 않음) — `/context-inspect`가 기본 출력 |
-| `claude -p` | 기록만; 명령은 `-p "/context-inspect"`로 실행 가능 |
+| Terminal | Status line, panel, toast, and commands, all of them |
+| VS Code chat panel | Hooks and command text only (the mod's graphics are not displayed) — `/context-inspect` is the default output |
+| `claude -p` | Records only; commands can be run with `-p "/context-inspect"` |
 
-## 한계
+## Limitations
 
-- 리로드·재개 시 `$.session.messages()`로 메인 대화만 복구한다(attachment, 서브에이전트, 시간 정보 없음).
-- 원장 상한 20,000 항목(넘치면 창 밖 항목부터 버림).
-- 컴팩션 보존 판정은 문자열 포함 여부다(파일은 basename도 인정) — 요약이 다른 말로 바꿔 쓴 것은 잃은 것으로 센다.
-- 유사도 버킷은 각 64개까지만 비교한다(수천 개의 거의 같은 출력도 대표끼리는 묶인다).
+- On reload or resume, only the main conversation is recovered through `$.session.messages()` (no attachments, subagents, or timing information).
+- Ledger cap of 20,000 items (when exceeded, items outside the window are dropped first).
+- Compaction retention is judged by string containment (for files, the basename is also accepted) — anything the summary rephrased counts as lost.
+- Similarity buckets compare at most 64 entries each (even thousands of near-identical outputs are grouped only through their representatives).
 
-## 개발
+## Development
 
 ```bash
 CLAUDE292=~/.vscode/extensions/anthropic.claude-code-2.1.292-darwin-arm64/resources/native-binary/claude
